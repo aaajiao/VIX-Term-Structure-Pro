@@ -1,8 +1,8 @@
 //@version=5
-indicator("VIX Term Structure Pro [v6.0 Enhanced]", overlay=false, max_lines_count=500)
+indicator("VIX Term Structure Pro [v6.1 Enhanced]", overlay=false, max_lines_count=500)
 
 // ╔════════════════════════════════════════════════════════════════════════════╗
-// ║                    VIX Term Structure Pro v6.0 使用指南                      ║
+// ║                    VIX Term Structure Pro v6.1 使用指南                      ║
 // ╠════════════════════════════════════════════════════════════════════════════╣
 // ║ 📊 仪表盘指标解读                                                           ║
 // ║----------------------------------------------------------------------------║
@@ -10,29 +10,9 @@ indicator("VIX Term Structure Pro [v6.0 Enhanced]", overlay=false, max_lines_cou
 // ║----------------------------------------------------------------------------║
 // ║ Overall Bias   │ STRONG BUY / BUY DIP    │ STRONG SELL / SELL/HEDGE       ║
 // ║ AI Score       │ ≥ 5 (极度恐慌)           │ ≤ -5 (极度贪婪)                 ║
-// ║ Market Trend   │ BULL (Above MA200)      │ BEAR (Below MA200)             ║
+// ║ Market Trend   │ 🟢SPX 🟢NDX             │ 🔴SPX 🔴NDX                     ║
 // ║ VIX Regime     │ LOW VOL (<15)           │ HIGH VOL (>25)                 ║
 // ║ Term Struct Z  │ < -2.0 (恐慌)           │ > 2.0 (贪婪)                    ║
-// ║ VIX Basis      │ > 5% (现货溢价=恐慌)     │ < -3% (贴水=过于平静)           ║
-// ║ Contango %     │ < 0% (倒挂=恐慌)        │ > 10% (陡峭=正常)               ║
-// ║ SKEW Index     │ < 110 (无尾部担忧)      │ > 145 (担心崩盘)                ║
-// ║ VVIX (可选)    │ > 130 (VIX波动大=恐慌)  │ < 80 (VIX平静)                  ║
-// ║ Put/Call Ratio │ > 1.2 (极度悲观)        │ < 0.7 (极度乐观)                ║
-// ║ Vol Status     │ PANIC SPIKE             │ Normal                         ║
-// ║ Z Momentum     │ ↓ Falling (恐慌加剧)    │ ↑ Rising (贪婪加剧)             ║
-// ╠════════════════════════════════════════════════════════════════════════════╣
-// ║ 🎯 AI Score 评分系统                                                        ║
-// ║----------------------------------------------------------------------------║
-// ║ Z < -2.5 (极低)        → +4 分    │ Z > 2.5 (极高)         → -4 分        ║
-// ║ Z < -1.5 (低)          → +2 分    │ Z > 1.5 (高)           → -2 分        ║
-// ║ Contango < 0 (倒挂)    → +2 分    │ Contango > 10%         → -1 分        ║
-// ║ VIX Basis > 5%         → +2 分    │ VIX Basis < -3%        → -1 分        ║
-// ║ PCR > 1.2              → +2 分    │ PCR < 0.7              → -2 分        ║
-// ║ VVIX > 130             → +1 分    │ VVIX < 80              → -1 分        ║
-// ║ SKEW 低                → +1 分    │ SKEW 高                → -3 分        ║
-// ║ 成交量爆发 + Z低       → +1 分    │ 熊市过滤器 (开启)      → -2 分        ║
-// ║ 动量确认               → +1 分    │                                       ║
-// ║ 周线共振               → +1 分    │                                       ║
 // ╠════════════════════════════════════════════════════════════════════════════╣
 // ║ 📌 信号含义                                                                 ║
 // ║----------------------------------------------------------------------------║
@@ -43,12 +23,6 @@ indicator("VIX Term Structure Pro [v6.0 Enhanced]", overlay=false, max_lines_cou
 // ║ 🟠 SELL/HEDGE     │ Score ≤ -2 │ 考虑减仓或对冲                            ║
 // ║ 🔴 STRONG SELL    │ Score ≤ -5 │ 多因子共振看空                            ║
 // ║ 🔥 EUPHORIA SELL  │ Score ≤ -6 │ 极端贪婪，考虑清仓                        ║
-// ╠════════════════════════════════════════════════════════════════════════════╣
-// ║ ⚙️ 策略模式说明                                                             ║
-// ║----------------------------------------------------------------------------║
-// ║ High (Scalping)   │ 敏感度最高，适合日内/短线，信号频繁                    ║
-// ║ Normal (Swing)    │ 中等敏感度，适合波段交易                               ║
-// ║ Low (Trend/Safe)  │ 最保守，仅捕捉极端信号，假信号最少                     ║
 // ╚════════════════════════════════════════════════════════════════════════════╝
 
 // ========== 评分函数定义 (模块化) ==========
@@ -76,15 +50,18 @@ show_z      = input.bool(true, "Show Term Struct Z-Score", group=grp_disp)
 show_skew   = input.bool(false, "Show Scaled SKEW Line", group=grp_disp)
 show_volume = input.bool(true, "Show Smart Volume", group=grp_disp)
 show_table  = input.bool(true, "Show Dashboard", group=grp_disp)
+panel_mode  = input.string("Compact", "Dashboard Mode", options=["Compact", "Full"], group=grp_disp, tooltip="Compact: 7 rows, essential info only\nFull: 12+ rows, all indicators visible")
 table_size  = input.string("Normal", "Dashboard Text Size", options=["Small", "Normal", "Large"], group=grp_disp)
 bg_transp   = input.int(70, "Dashboard Transparency", minval=0, maxval=100, group=grp_disp)
 
 grp_sens = "⚠️ Strategy Mode (关键设置)"
 sens_mode   = input.string("Low (Trend/Safe)", "Signal Sensitivity", options=["High (Scalping)", "Normal (Swing)", "Low (Trend/Safe)"], group=grp_sens)
 
-// 趋势过滤器
-use_trend_filter = input.bool(true, "🛡️ SPX Trend Filter (MA200)", group=grp_sens, tooltip="If ON: 'BUY DIP' is DISABLED when SPX is below MA200.\nOnly 'STRONG BUY' (Crash) signals are allowed in Bear Markets.")
-trend_src        = input.symbol("SP:SPX", "Trend Reference Symbol", group=grp_sens)
+// 趋势过滤器 - 自动检测
+grp_trend = "📈 Trend Filter Settings"
+use_trend_filter = input.bool(true, "🛡️ Market Trend Filter (MA200)", group=grp_trend, tooltip="If ON: 'BUY DIP' is DISABLED when primary index is below MA200.\nOnly 'STRONG BUY' (Crash) signals are allowed in Bear Markets.")
+auto_detect_index = input.bool(true, "Auto-Detect Index (Based on Chart)", group=grp_trend, tooltip="Auto: If chart is QQQ/NQ/NDX related, use NDX as primary. Otherwise use SPX.\nManual: Use the symbol specified below.")
+manual_trend_src = input.symbol("SP:SPX", "Manual Trend Source", group=grp_trend, tooltip="Only used when Auto-Detect is OFF")
 
 // VIX Regime 设置
 grp_regime = "📊 VIX Regime Settings"
@@ -131,6 +108,7 @@ skew_len     = input.int(126, "SKEW Lookback Period", minval=20, group=grp_stat)
 sym_pcr_input = input.symbol("CBOE:CPCI", "Put/Call Ratio Symbol", group="Data Symbols")
 
 t_size = table_size == "Small" ? size.small : table_size == "Large" ? size.large : size.normal
+is_compact = panel_mode == "Compact"
 
 // ========== 2. 数据获取 ==========
 vix     = request.security("CBOE:VIX", "D", close, ignore_invalid_symbol=true)
@@ -143,17 +121,44 @@ pcr     = request.security(sym_pcr_input, "D", close, ignore_invalid_symbol=true
 // VVIX 数据 (可选)
 vvix = use_vvix ? request.security("CBOE:VVIX", "D", close, ignore_invalid_symbol=true) : na
 
-// 获取大盘趋势数据 (SPX)
-spx_close = request.security(trend_src, "D", close, ignore_invalid_symbol=true)
-spx_ma200 = request.security(trend_src, "D", ta.sma(close, 200), ignore_invalid_symbol=true)
+// 自动检测逻辑：如果图表是 QQQ/NQ/NDX 相关，用 NDX；否则用 SPX
+is_nasdaq_chart = str.contains(str.upper(syminfo.ticker), "QQQ") or 
+                  str.contains(str.upper(syminfo.ticker), "NDX") or 
+                  str.contains(str.upper(syminfo.ticker), "NQ")
+
+// 获取双指数趋势数据 (SPX + NDX)
+spx_close = request.security("SP:SPX", "D", close, ignore_invalid_symbol=true)
+spx_ma200 = request.security("SP:SPX", "D", ta.sma(close, 200), ignore_invalid_symbol=true)
+ndx_close = request.security("NASDAQ:NDX", "D", close, ignore_invalid_symbol=true)
+ndx_ma200 = request.security("NASDAQ:NDX", "D", ta.sma(close, 200), ignore_invalid_symbol=true)
+
+// 如果用户关闭自动检测，使用手动指定的 symbol
+manual_close = request.security(manual_trend_src, "D", close, ignore_invalid_symbol=true)
+manual_ma200 = request.security(manual_trend_src, "D", ta.sma(close, 200), ignore_invalid_symbol=true)
 
 valid_data = not na(vix) and not na(vx1) and not na(vx2)
 
 // ========== 3. 核心计算 ==========
-// Trend Filter Logic
-is_bull_market = not na(spx_close) ? (spx_close > spx_ma200) : true
-trend_status_txt = is_bull_market ? "BULL (Above MA200)" : "BEAR (Below MA200)"
-trend_color = is_bull_market ? color.green : color.red
+// SPX 趋势判断
+is_spx_bull = not na(spx_close) ? (spx_close > spx_ma200) : true
+// NDX 趋势判断
+is_ndx_bull = not na(ndx_close) ? (ndx_close > ndx_ma200) : true
+
+// 主趋势判断（用于评分系统的过滤）
+// 自动检测：Nasdaq 图表用 NDX，否则用 SPX
+// 手动模式：使用用户指定的 symbol
+is_primary_bull = auto_detect_index ? 
+                  (is_nasdaq_chart ? is_ndx_bull : is_spx_bull) : 
+                  (not na(manual_close) ? (manual_close > manual_ma200) : true)
+
+// 趋势状态文本（双指数合并显示）
+spx_emoji = is_spx_bull ? "🟢" : "🔴"
+ndx_emoji = is_ndx_bull ? "🟢" : "🔴"
+trend_status_txt = spx_emoji + "SPX " + ndx_emoji + "NDX"
+trend_color = is_spx_bull and is_ndx_bull ? color.green : not is_spx_bull and not is_ndx_bull ? color.red : color.orange
+
+// 用于评分的 is_bull_market（使用主趋势）
+is_bull_market = is_primary_bull
 
 // VIX Regime 判断
 vix_regime = vix < vix_low_thresh ? 1 : vix > vix_high_thresh ? 3 : 2
@@ -226,7 +231,7 @@ is_vol_high   = vx1_vol >= vol_ma * 1.5
 col_vol = is_vol_spike ? color.new(color.yellow, 30) : is_vol_high ? color.new(color.aqua, 60) : color.new(color.gray, 90)
 vol_visual_boost = is_vol_spike ? 1.2 : 1.0 
 
-// ========== 4. AI 信号算法 (Enhanced v6.0 - 模块化) ==========
+// ========== 4. AI 信号算法 (Enhanced v6.1 - 模块化) ==========
 var float score = 0.0
 
 // 使用模块化评分函数
@@ -300,8 +305,10 @@ plot(-thresh_strong, "Lower", color=color.new(color.gray, 50), style=plot.style_
 scaled_vol = not na(vx1_vol) and vol_max_rolling > 0 ? ((vx1_vol * vol_visual_boost) / vol_max_rolling) * 1.8 - 3.8 : na
 plot(show_volume ? scaled_vol : na, color=col_vol, title="Smart Volume", style=plot.style_columns, linewidth=2)
 
-// ========== 6. 增强版仪表盘 ==========
-var table panel = table.new(position.top_right, 2, 13, border_width=0, frame_color=color.new(color.gray, 100), border_color=color.new(color.gray, 100))
+// ========== 6. 增强版仪表盘 (Compact/Full 模式) ==========
+// Compact: 8 rows, Full: 13 rows (with VVIX option)
+panel_rows = is_compact ? 8 : (use_vvix ? 14 : 13)
+var table panel = table.new(position.top_right, 2, panel_rows, border_width=0, frame_color=color.new(color.gray, 100), border_color=color.new(color.gray, 100))
 
 if show_table and barstate.islast
     transp_header = math.max(0, bg_transp - 20)
@@ -313,75 +320,76 @@ if show_table and barstate.islast
 
     mode_display = sens_mode == "High (Scalping)" ? "(High)" : sens_mode == "Normal (Swing)" ? "(Normal)" : "(Trend Guard)"
     table.cell(panel, 0, 0, "AI Signal " + mode_display, bgcolor=bg_header, text_color=color.white, text_size=t_size, width=12)
-    table.cell(panel, 1, 0, "Status", bgcolor=bg_header, text_color=color.white, text_size=t_size, width=9)
+    table.cell(panel, 1, 0, is_compact ? "Compact" : "Full", bgcolor=bg_header, text_color=color.white, text_size=t_size, width=9)
     
-    // 1. Overall Bias
+    // Row 1: Overall Bias
     table.cell(panel, 0, 1, "Overall Bias", bgcolor=bg_cell, text_color=color.white, text_halign=text.align_left, text_size=t_size)
     table.cell(panel, 1, 1, signal_txt, bgcolor=bg_cell, text_color=signal_col, text_size=t_size)
 
-    // 2. AI Score 显示
+    // Row 2: AI Score
     score_col = score >= 5 ? color.green : score >= min_score_buy ? color.lime : score <= -5 ? color.red : score <= -2 ? color.orange : color.silver
     table.cell(panel, 0, 2, "AI Score", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
     table.cell(panel, 1, 2, str.tostring(score, "#.#"), bgcolor=bg_cell, text_color=score_col, text_size=t_size)
 
-    // 3. Trend Filter Status
+    // Row 3: Market Trend (双指数合并显示)
     table.cell(panel, 0, 3, "Market Trend", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
     table.cell(panel, 1, 3, trend_status_txt, bgcolor=bg_cell, text_color=trend_color, text_size=t_size)
 
-    // 4. VIX Regime (新增)
+    // Row 4: VIX Regime
     table.cell(panel, 0, 4, "VIX Regime", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
     table.cell(panel, 1, 4, vix_regime_txt + " (" + str.tostring(vix, "#.#") + ")", bgcolor=bg_cell, text_color=vix_regime_color, text_size=t_size)
 
-    // 5. Term Struct Z
+    // Row 5: Term Struct Z
     z_col_t = z > thresh_strong ? color.new(color.blue, 20) : z < -thresh_strong ? color.new(color.red, 20) : color.silver
     table.cell(panel, 0, 5, "Term Struct Z", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
     table.cell(panel, 1, 5, str.tostring(z, "#.##"), bgcolor=bg_cell, text_color=z_col_t, text_size=t_size)
 
-    // 6. VIX Basis
-    basis_col = is_basis_panic ? color.red : is_basis_calm ? color.lime : color.silver
-    basis_txt = str.tostring(vix_basis, "#.##") + "%"
-    table.cell(panel, 0, 6, "VIX Basis", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-    table.cell(panel, 1, 6, basis_txt, bgcolor=bg_cell, text_color=basis_col, text_size=t_size)
-
-    // 7. Contango
-    c_col = contango_pct > 0 ? color.lime : color.red
-    table.cell(panel, 0, 7, "Contango %", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-    table.cell(panel, 1, 7, str.tostring(contango_pct, "#.##") + "%", bgcolor=bg_cell, text_color=c_col, text_size=t_size)
-
-    // 8. SKEW
-    skew_val_str = not na(skew) ? str.tostring(skew, "#.0") : "N/A"
-    skew_col_final = not na(skew) ? (is_skew_high ? color.red : is_skew_low ? color.lime : color.silver) : color.gray
-    table.cell(panel, 0, 8, "SKEW Index", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-    table.cell(panel, 1, 8, skew_val_str, bgcolor=bg_cell, text_color=skew_col_final, text_size=t_size)
-
-    // 9. VVIX (可选显示)
-    if use_vvix
-        vvix_val_str = not na(vvix) ? str.tostring(vvix, "#.#") : "N/A"
-        vvix_col = is_vvix_panic ? color.red : is_vvix_calm ? color.lime : color.silver
-        table.cell(panel, 0, 9, "VVIX", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-        table.cell(panel, 1, 9, vvix_val_str, bgcolor=bg_cell, text_color=vvix_col, text_size=t_size)
-
-    // 10. P/C Ratio
-    pcr_row = use_vvix ? 10 : 9
-    pcr_display = not na(pcr) ? str.tostring(pcr, "#.##") : "N/A"
-    pcr_col = not na(pcr) ? (pcr > 1.2 ? color.lime : pcr < 0.7 ? color.red : color.silver) : color.gray
-    table.cell(panel, 0, pcr_row, "Put/Call (Idx)", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-    table.cell(panel, 1, pcr_row, pcr_display, bgcolor=bg_cell, text_color=pcr_col, text_size=t_size)
-
-    // 11. Vol Status
-    vol_row = use_vvix ? 11 : 10
+    // Row 6: Vol Status
     vol_ratio = not na(vx1_vol) ? vx1_vol / vol_ma : 0
     vol_txt = vol_ratio > 2.5 ? "PANIC SPIKE" : vol_ratio > 1.5 ? "High Activity" : "Normal"
     vol_col_txt = vol_ratio > 2.5 ? color.yellow : vol_ratio > 1.5 ? color.aqua : color.silver
-    table.cell(panel, 0, vol_row, "Vol Status", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-    table.cell(panel, 1, vol_row, vol_txt, bgcolor=bg_cell, text_color=vol_col_txt, text_size=t_size)
+    table.cell(panel, 0, 6, "Vol Status", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
+    table.cell(panel, 1, 6, vol_txt, bgcolor=bg_cell, text_color=vol_col_txt, text_size=t_size)
 
-    // 12. Z Momentum (带中性状态)
-    z_mom_row = use_vvix ? 12 : 11
+    // Row 7: Z Momentum
     z_mom_txt = z_momentum_bullish ? "↓ Falling" : z_momentum_bearish ? "↑ Rising" : "→ Flat"
     z_mom_col = z_momentum_bullish ? color.lime : z_momentum_bearish ? color.orange : color.silver
-    table.cell(panel, 0, z_mom_row, "Z Momentum", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-    table.cell(panel, 1, z_mom_row, z_mom_txt, bgcolor=bg_cell, text_color=z_mom_col, text_size=t_size)
+    table.cell(panel, 0, 7, "Z Momentum", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
+    table.cell(panel, 1, 7, z_mom_txt, bgcolor=bg_cell, text_color=z_mom_col, text_size=t_size)
+
+    // ===== Full Mode Only =====
+    if not is_compact
+        // Row 8: VIX Basis
+        basis_col = is_basis_panic ? color.red : is_basis_calm ? color.lime : color.silver
+        basis_txt = str.tostring(vix_basis, "#.##") + "%"
+        table.cell(panel, 0, 8, "VIX Basis", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
+        table.cell(panel, 1, 8, basis_txt, bgcolor=bg_cell, text_color=basis_col, text_size=t_size)
+
+        // Row 9: Contango
+        c_col = contango_pct > 0 ? color.lime : color.red
+        table.cell(panel, 0, 9, "Contango %", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
+        table.cell(panel, 1, 9, str.tostring(contango_pct, "#.##") + "%", bgcolor=bg_cell, text_color=c_col, text_size=t_size)
+
+        // Row 10: SKEW
+        skew_val_str = not na(skew) ? str.tostring(skew, "#.0") : "N/A"
+        skew_col_final = not na(skew) ? (is_skew_high ? color.red : is_skew_low ? color.lime : color.silver) : color.gray
+        table.cell(panel, 0, 10, "SKEW Index", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
+        table.cell(panel, 1, 10, skew_val_str, bgcolor=bg_cell, text_color=skew_col_final, text_size=t_size)
+
+        // Row 11: VVIX (if enabled)
+        vvix_row = 11
+        if use_vvix
+            vvix_val_str = not na(vvix) ? str.tostring(vvix, "#.#") : "N/A"
+            vvix_col = is_vvix_panic ? color.red : is_vvix_calm ? color.lime : color.silver
+            table.cell(panel, 0, vvix_row, "VVIX", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
+            table.cell(panel, 1, vvix_row, vvix_val_str, bgcolor=bg_cell, text_color=vvix_col, text_size=t_size)
+            vvix_row := 12
+
+        // Row 11/12: P/C Ratio
+        pcr_display = not na(pcr) ? str.tostring(pcr, "#.##") : "N/A"
+        pcr_col = not na(pcr) ? (pcr > 1.2 ? color.lime : pcr < 0.7 ? color.red : color.silver) : color.gray
+        table.cell(panel, 0, vvix_row, "Put/Call (Idx)", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
+        table.cell(panel, 1, vvix_row, pcr_display, bgcolor=bg_cell, text_color=pcr_col, text_size=t_size)
 
 // ========== 7. 增强版信号 ==========
 is_signal_allowed = use_trend_filter ? is_bull_market : true
