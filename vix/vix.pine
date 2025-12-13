@@ -42,90 +42,124 @@ calc_vvix_points(vvix_val, use_vvix) =>
     not use_vvix or na(vvix_val) ? 0 : vvix_val > 130 ? 1 : vvix_val < 80 ? -1 : 0
 
 // ========== 1. 参数设置 ==========
-grp_disp = "Display Settings"
-show_z      = input.bool(true, "Show Term Struct Z-Score", group=grp_disp)
-show_skew   = input.bool(false, "Show Scaled SKEW Line", group=grp_disp)
-show_volume = input.bool(true, "Show Smart Volume", group=grp_disp)
-show_table  = input.bool(true, "Show Dashboard", group=grp_disp)
-panel_mode  = input.string("Compact", "Dashboard Mode", options=["Compact", "Full"], group=grp_disp, tooltip="Compact: 7 rows, essential info only\nFull: 12+ rows, all indicators visible")
-table_size  = input.string("Normal", "Dashboard Text Size", options=["Small", "Normal", "Large"], group=grp_disp)
-bg_transp   = input.int(70, "Dashboard Transparency", minval=0, maxval=100, group=grp_disp)
 
-grp_sens = "⚠️ Strategy Mode (关键设置)"
-sens_mode   = input.string("Low (Trend/Safe)", "Signal Sensitivity", options=["High (Scalping)", "Normal (Swing)", "Low (Trend/Safe)"], group=grp_sens)
+// ────────────────────────────────────────────────────────────────────────────
+// 📡 数据源设置 (Data Sources)
+// ────────────────────────────────────────────────────────────────────────────
+grp_data = "📡 Data Sources"
+backtest_mode = input.bool(false, "🔬 Backtest Mode", group=grp_data, tooltip="OFF: 实时模式，显示当日数据（适合实盘监控）\nON: 回测模式，仅使用已确认的历史数据（避免未来函数）")
+sym_vix_input = input.symbol("CBOE:VIX", "VIX Symbol", group=grp_data, tooltip="Default: CBOE:VIX. Alternative: TVC:VIX")
+vix_timeframe = input.string("Daily", "VIX Timeframe", options=["Daily", "Chart"], group=grp_data, tooltip="Daily: 使用日线收盘价（稳定）\nChart: 跟随当前图表时间框架（更实时）")
+sym_pcr_input = input.symbol("INDEX:CPCI", "Put/Call Ratio Symbol", group=grp_data, tooltip="Default: INDEX:CPCI (Index P/C). Alternative: INDEX:PCC (Equity P/C)")
+manual_trend_src = input.symbol("SP:SPX", "Manual Trend Source", group=grp_data, tooltip="Only used when Auto-Detect Index is OFF")
 
-// 趋势过滤器 - 自动检测
-grp_trend = "📈 Trend Filter Settings"
-use_trend_filter = input.bool(true, "🛡️ Market Trend Filter (MA200)", group=grp_trend, tooltip="If ON: 'BUY DIP' is DISABLED when primary index is below MA200.\nOnly 'STRONG BUY' (Crash) signals are allowed in Bear Markets.")
-auto_detect_index = input.bool(true, "Auto-Detect Index (Based on Chart)", group=grp_trend, tooltip="Auto: If chart is QQQ/NQ/NDX related, use NDX as primary. Otherwise use SPX.\nManual: Use the symbol specified below.")
-manual_trend_src = input.symbol("SP:SPX", "Manual Trend Source", group=grp_trend, tooltip="Only used when Auto-Detect is OFF")
+// ────────────────────────────────────────────────────────────────────────────
+// ⚠️ 策略模式 (Strategy Mode) - 核心设置
+// ────────────────────────────────────────────────────────────────────────────
+grp_strategy = "⚠️ Strategy Mode (核心设置)"
+sens_mode = input.string("Low (Trend/Safe)", "Signal Sensitivity", options=["High (Scalping)", "Normal (Swing)", "Low (Trend/Safe)"], group=grp_strategy, tooltip="High: 更敏感，适合短线\nNormal: 平衡模式\nLow: 更保守，适合趋势跟踪")
+use_trend_filter = input.bool(true, "🛡️ Market Trend Filter (MA200)", group=grp_strategy, tooltip="If ON: 'BUY DIP' is DISABLED when primary index is below MA200.\nOnly 'STRONG BUY' (Crash) signals are allowed in Bear Markets.")
+auto_detect_index = input.bool(true, "Auto-Detect Index (Based on Chart)", group=grp_strategy, tooltip="Auto: If chart is QQQ/NQ/NDX related, use NDX as primary. Otherwise use SPX.\nManual: Use the symbol specified in Data Sources.")
 
-// VIX Regime 设置
-grp_regime = "📊 VIX Regime Settings"
-vix_low_thresh = input.float(15.0, "Low Vol Threshold", minval=10, maxval=20, group=grp_regime)
-vix_high_thresh = input.float(25.0, "High Vol Threshold", minval=20, maxval=40, group=grp_regime)
-
-// 动量确认
+// ────────────────────────────────────────────────────────────────────────────
+// 🎯 信号确认 (Signal Confirmation)
+// ────────────────────────────────────────────────────────────────────────────
 grp_confirm = "🎯 Signal Confirmation"
 use_momentum_confirm = input.bool(true, "Use Momentum Confirmation", group=grp_confirm, tooltip="Require Z-Score momentum to confirm signals")
 momentum_bars = input.int(3, "Momentum Lookback Bars", minval=1, maxval=10, group=grp_confirm)
 z_momentum_neutral_zone = input.float(0.05, "Z Momentum Neutral Zone", minval=0.01, maxval=0.2, step=0.01, group=grp_confirm, tooltip="Z-Score change threshold to filter noise")
 use_mtf_confirm = input.bool(false, "Use Weekly MTF Confirmation", group=grp_confirm, tooltip="Require weekly Z-Score alignment for strongest signals")
 
-// 自适应阈值设置
-grp_adapt = "🔄 Adaptive Thresholds"
-use_adaptive_thresholds = input.bool(true, "Use Adaptive Thresholds", group=grp_adapt, tooltip="Use percentile-based dynamic thresholds instead of fixed values")
-adapt_lookback = input.int(252, "Adaptive Lookback Period", minval=50, maxval=500, group=grp_adapt)
+// ────────────────────────────────────────────────────────────────────────────
+// 🎨 图表样式 (Chart Style)
+// ────────────────────────────────────────────────────────────────────────────
+grp_chart = "🎨 Chart Style"
+show_z      = input.bool(true, "Show Term Struct Z-Score", group=grp_chart)
+show_skew   = input.bool(false, "Show Scaled SKEW Line", group=grp_chart)
+show_volume = input.bool(true, "Show Smart Volume", group=grp_chart)
+mid_line_color = input.color(color.yellow, "±1 Line Color", group=grp_chart)
+mid_line_style = input.string("Dashed", "±1 Line Style", options=["Solid", "Dashed", "Dotted"], group=grp_chart)
 
-// VVIX 设置 (可选)
-grp_vvix = "📈 VVIX Settings (Optional)"
+// ────────────────────────────────────────────────────────────────────────────
+// 📋 仪表盘设置 (Dashboard)
+// ────────────────────────────────────────────────────────────────────────────
+grp_dashboard = "� Dashboard"
+show_table  = input.bool(true, "Show Dashboard", group=grp_dashboard)
+panel_mode  = input.string("Compact", "Dashboard Mode", options=["Compact", "Full"], group=grp_dashboard, tooltip="Compact: 8 rows, essential info only\nFull: 12+ rows, all indicators visible")
+table_size  = input.string("Normal", "Dashboard Text Size", options=["Small", "Normal", "Large"], group=grp_dashboard)
+bg_transp   = input.int(70, "Dashboard Transparency", minval=0, maxval=100, group=grp_dashboard)
+
+// ────────────────────────────────────────────────────────────────────────────
+// 📊 统计与警报 (Statistics & Alerts)
+// ────────────────────────────────────────────────────────────────────────────
+grp_stats = "📊 Statistics & Alerts"
+show_signal_stats = input.bool(true, "Show Signal Statistics", group=grp_stats)
+stats_lookback_years = input.int(3, "Stats Lookback (Years)", minval=1, maxval=20, group=grp_stats, tooltip="Only count signals within the last N years")
+crash_return_bars = input.int(40, "🚨 CRASH Return Period (Bars)", minval=10, maxval=60, group=grp_stats, tooltip="~2 months for extreme panic recovery")
+strong_return_bars = input.int(20, "🟢 STRONG Return Period (Bars)", minval=10, maxval=40, group=grp_stats, tooltip="~1 month for strong signals")
+dip_return_bars = input.int(10, "🟡 DIP Return Period (Bars)", minval=5, maxval=20, group=grp_stats, tooltip="~2 weeks for dip buying")
+alert_cooldown = input.int(5, "Alert Cooldown (Bars)", minval=1, maxval=20, group=grp_stats, tooltip="Minimum bars between alerts to prevent spam")
+
+// ────────────────────────────────────────────────────────────────────────────
+// ⚙️ 高级设置 (Advanced Settings)
+// ────────────────────────────────────────────────────────────────────────────
+grp_advanced = "⚙️ Advanced Settings"
+
+// VIX Regime 阈值
+vix_low_thresh = input.float(15.0, "VIX Low Vol Threshold", minval=10, maxval=20, group=grp_advanced, tooltip="Below this = LOW VOL regime")
+vix_high_thresh = input.float(25.0, "VIX High Vol Threshold", minval=20, maxval=40, group=grp_advanced, tooltip="Above this = HIGH VOL regime")
+
+// 自适应阈值
+use_adaptive_thresholds = input.bool(true, "Use Adaptive Thresholds", group=grp_advanced, tooltip="Use percentile-based dynamic thresholds instead of fixed values")
+adapt_lookback = input.int(252, "Adaptive Lookback Period", minval=50, maxval=500, group=grp_advanced)
+
+// Z-Score 计算
+use_adaptive = input.bool(true, "Use Adaptive Lookback (Z-Score)", group=grp_advanced, tooltip="Shorter lookback in high-vol periods")
+len_low      = input.int(252, "Lookback (Low Vol)", minval=50, group=grp_advanced)
+len_high     = input.int(126, "Lookback (High Vol)", minval=20, group=grp_advanced)
+vol_thresh   = input.float(20.0, "Vol Regime Threshold", minval=10, group=grp_advanced)
+
+// SKEW 设置
+skew_mode    = input.string("Relative (Z-Score)", "SKEW Logic Mode", options=["Relative (Z-Score)", "Percentile (Adaptive)", "Absolute (>140)"], group=grp_advanced)
+skew_len     = input.int(126, "SKEW Lookback Period", minval=20, group=grp_advanced)
+
+// 成交量设置
+vol_avg_len  = input.int(20, "Volume Avg Length", minval=5, group=grp_advanced)
+
+// ────────────────────────────────────────────────────────────────────────────
+// 📈 VVIX 设置 (Optional)
+// ────────────────────────────────────────────────────────────────────────────
+grp_vvix = "📈 VVIX (Optional)"
 use_vvix = input.bool(false, "Enable VVIX Integration", group=grp_vvix, tooltip="VVIX = VIX of VIX, measures expected volatility of VIX itself")
 vvix_panic_thresh = input.float(130.0, "VVIX Panic Threshold", minval=100, maxval=160, group=grp_vvix)
 vvix_calm_thresh = input.float(80.0, "VVIX Calm Threshold", minval=60, maxval=100, group=grp_vvix)
 
-// 信号统计设置
-grp_stats = "📊 Signal Statistics"
-show_signal_stats = input.bool(true, "Show Signal Statistics", group=grp_stats)
-stats_lookback_years = input.int(3, "Stats Lookback (Years)", minval=1, maxval=20, group=grp_stats, tooltip="Only count signals within the last N years")
-// 分级回报周期（v7.1）
-crash_return_bars = input.int(40, "🚨 CRASH Return Period (Bars)", minval=10, maxval=60, group=grp_stats, tooltip="~2 months for extreme panic recovery")
-strong_return_bars = input.int(20, "🟢 STRONG Return Period (Bars)", minval=10, maxval=40, group=grp_stats, tooltip="~1 month for strong signals")
-dip_return_bars = input.int(10, "🟡 DIP Return Period (Bars)", minval=5, maxval=20, group=grp_stats, tooltip="~2 weeks for dip buying")
-
-// Alert 设置
-grp_alert = "🔔 Alert Settings"
-alert_cooldown = input.int(5, "Alert Cooldown (Bars)", minval=1, maxval=20, group=grp_alert, tooltip="Minimum bars between alerts to prevent spam")
-
-// 优化：使用条件表达式直接设置参数（编译期优化）
+// ────────────────────────────────────────────────────────────────────────────
+// 内部计算参数（基于策略模式）
+// ────────────────────────────────────────────────────────────────────────────
 smooth_dyn = sens_mode == "High (Scalping)" ? 3 : sens_mode == "Normal (Swing)" ? 5 : 8
 thresh_strong = sens_mode == "High (Scalping)" ? 2.0 : sens_mode == "Normal (Swing)" ? 2.2 : 2.5
 thresh_mid = sens_mode == "High (Scalping)" ? 1.0 : sens_mode == "Normal (Swing)" ? 1.2 : 1.5
 min_score_buy = sens_mode == "High (Scalping)" ? 2 : sens_mode == "Normal (Swing)" ? 3 : 4
 
-// --- 基础统计 ---
-grp_stat = "Advanced Settings"
-use_adaptive = input.bool(true, "Use Adaptive Lookback", group=grp_stat)
-len_low      = input.int(252, "Lookback (Low Vol)", minval=50, group=grp_stat)
-len_high     = input.int(126, "Lookback (High Vol)", minval=20, group=grp_stat)
-vol_thresh   = input.float(20.0, "Vol Regime Threshold", minval=10, group=grp_stat)
-vol_avg_len  = input.int(20, "Volume Avg Length", minval=5, group=grp_stat)
-skew_mode    = input.string("Relative (Z-Score)", "SKEW Logic Mode", options=["Relative (Z-Score)", "Percentile (Adaptive)", "Absolute (>140)"], group=grp_stat)
-skew_len     = input.int(126, "SKEW Lookback Period", minval=20, group=grp_stat)
-sym_pcr_input = input.symbol("CBOE:CPCI", "Put/Call Ratio Symbol", group="Data Symbols")
-
 t_size = table_size == "Small" ? size.small : table_size == "Large" ? size.large : size.normal
 is_compact = panel_mode == "Compact"
 
 // ========== 2. 数据获取 ==========
-vix     = request.security("CBOE:VIX", "D", close, ignore_invalid_symbol=true)
-vx1     = request.security("CBOE:VX1!", "D", close, ignore_invalid_symbol=true)
-vx2     = request.security("CBOE:VX2!", "D", close, ignore_invalid_symbol=true)
-vx1_vol = request.security("CBOE:VX1!", "D", volume, ignore_invalid_symbol=true)
-skew    = request.security("CBOE:SKEW", "D", close, ignore_invalid_symbol=true)
-pcr     = request.security(sym_pcr_input, "D", close, ignore_invalid_symbol=true)
+// Backtest Mode OFF: 使用 lookahead_on 获取当日实时数据
+// Backtest Mode ON: 禁用 lookahead，仅使用已确认的历史数据
+vix_tf = vix_timeframe == "Daily" ? "D" : ""
+lookahead_setting = backtest_mode ? barmerge.lookahead_off : barmerge.lookahead_on
+
+vix     = request.security(sym_vix_input, vix_tf, close, lookahead=lookahead_setting, ignore_invalid_symbol=true)
+vx1     = request.security("CBOE:VX1!", "D", close, lookahead=lookahead_setting, ignore_invalid_symbol=true)
+vx2     = request.security("CBOE:VX2!", "D", close, lookahead=lookahead_setting, ignore_invalid_symbol=true)
+vx1_vol = request.security("CBOE:VX1!", "D", volume, lookahead=lookahead_setting, ignore_invalid_symbol=true)
+skew    = request.security("CBOE:SKEW", "D", close, lookahead=lookahead_setting, ignore_invalid_symbol=true)
+pcr     = request.security(sym_pcr_input, "D", close, lookahead=lookahead_setting, ignore_invalid_symbol=true)
 
 // VVIX 数据 (可选)
-vvix = use_vvix ? request.security("CBOE:VVIX", "D", close, ignore_invalid_symbol=true) : na
+vvix = use_vvix ? request.security("CBOE:VVIX", "D", close, lookahead=lookahead_setting, ignore_invalid_symbol=true) : na
 
 // 自动检测逻辑：如果图表是 QQQ/NQ/NDX 相关，用 NDX；否则用 SPX
 is_nasdaq_chart = str.contains(str.upper(syminfo.ticker), "QQQ") or 
@@ -388,6 +422,9 @@ plot(show_z ? z : na, color=col_z, title="Term Struct Z", linewidth=2)
 plot(show_skew ? scaled_skew : na, color=color.new(color.fuchsia, 40), title="SKEW (Scaled)", linewidth=1)
 
 hline(0, "Zero", color=color.gray, linestyle=hline.style_solid)
+mid_hline_style = mid_line_style == "Solid" ? hline.style_solid : mid_line_style == "Dashed" ? hline.style_dashed : hline.style_dotted
+hline(1, "+1 Mid", color=mid_line_color, linestyle=mid_hline_style)
+hline(-1, "-1 Mid", color=mid_line_color, linestyle=mid_hline_style)
 plot(thresh_strong, "Upper", color=color.new(color.gray, 50), style=plot.style_line)
 plot(-thresh_strong, "Lower", color=color.new(color.gray, 50), style=plot.style_line)
 
