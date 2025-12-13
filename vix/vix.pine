@@ -86,7 +86,7 @@ vvix_calm_thresh = input.float(80.0, "VVIX Calm Threshold", minval=60, maxval=10
 // 信号统计设置
 grp_stats = "📊 Signal Statistics"
 show_signal_stats = input.bool(true, "Show Signal Statistics", group=grp_stats)
-stats_lookback_years = input.int(3, "Stats Lookback (Years)", minval=1, maxval=10, group=grp_stats, tooltip="Only count signals within the last N years")
+stats_lookback_years = input.int(3, "Stats Lookback (Years)", minval=1, maxval=20, group=grp_stats, tooltip="Only count signals within the last N years")
 // 分级回报周期（v7.1）
 crash_return_bars = input.int(40, "🚨 CRASH Return Period (Bars)", minval=10, maxval=60, group=grp_stats, tooltip="~2 months for extreme panic recovery")
 strong_return_bars = input.int(20, "🟢 STRONG Return Period (Bars)", minval=10, maxval=40, group=grp_stats, tooltip="~1 month for strong signals")
