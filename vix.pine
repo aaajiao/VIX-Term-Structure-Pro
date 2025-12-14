@@ -161,16 +161,21 @@ pcr     = request.security(sym_pcr_input, "D", close, lookahead=lookahead_settin
 // VVIX 数据 (可选)
 vvix = use_vvix ? request.security("CBOE:VVIX", "D", close, lookahead=lookahead_setting, ignore_invalid_symbol=true) : na
 
-// 自动检测逻辑：如果图表是 QQQ/NQ/NDX 相关，用 NDX；否则用 SPX
+// 自动检测逻辑：如果图表是 QQQ/NQ/NDX 相关，用 NDX；如果是 IWM/RUT/RTY 相关，用 RUT；否则用 SPX
 is_nasdaq_chart = str.contains(str.upper(syminfo.ticker), "QQQ") or 
                   str.contains(str.upper(syminfo.ticker), "NDX") or 
                   str.contains(str.upper(syminfo.ticker), "NQ")
+is_russell_chart = str.contains(str.upper(syminfo.ticker), "IWM") or 
+                   str.contains(str.upper(syminfo.ticker), "RUT") or 
+                   str.contains(str.upper(syminfo.ticker), "RTY")
 
 // 获取双指数趋势数据 (SPX + NDX)
 spx_close = request.security("SP:SPX", "D", close, ignore_invalid_symbol=true)
 spx_ma200 = request.security("SP:SPX", "D", ta.sma(close, 200), ignore_invalid_symbol=true)
 ndx_close = request.security("NASDAQ:NDX", "D", close, ignore_invalid_symbol=true)
 ndx_ma200 = request.security("NASDAQ:NDX", "D", ta.sma(close, 200), ignore_invalid_symbol=true)
+rut_close = request.security("TVC:RUT", "D", close, ignore_invalid_symbol=true)
+rut_ma200 = request.security("TVC:RUT", "D", ta.sma(close, 200), ignore_invalid_symbol=true)
 
 // 如果用户关闭自动检测，使用手动指定的 symbol
 manual_close = request.security(manual_trend_src, "D", close, ignore_invalid_symbol=true)
@@ -183,17 +188,21 @@ valid_data = not na(vix) and not na(vx1) and not na(vx2)
 is_spx_bull = not na(spx_close) ? (spx_close > spx_ma200) : true
 // NDX 趋势判断
 is_ndx_bull = not na(ndx_close) ? (ndx_close > ndx_ma200) : true
+// RUT 趋势判断
+is_rut_bull = not na(rut_close) ? (rut_close > rut_ma200) : true
 
 // 主趋势判断（用于评分系统的过滤）
 is_primary_bull = auto_detect_index ? 
-                  (is_nasdaq_chart ? is_ndx_bull : is_spx_bull) : 
+                  (is_russell_chart ? is_rut_bull : is_nasdaq_chart ? is_ndx_bull : is_spx_bull) : 
                   (not na(manual_close) ? (manual_close > manual_ma200) : true)
 
-// 趋势状态文本（双指数合并显示）
+// 趋势状态文本（三指数合并显示）
 spx_emoji = is_spx_bull ? "🟢" : "🔴"
 ndx_emoji = is_ndx_bull ? "🟢" : "🔴"
-trend_status_txt = spx_emoji + "SPX " + ndx_emoji + "NDX"
-trend_color = is_spx_bull and is_ndx_bull ? color.green : not is_spx_bull and not is_ndx_bull ? color.red : color.orange
+rut_emoji = is_rut_bull ? "🟢" : "🔴"
+trend_status_txt = spx_emoji + "SPX " + ndx_emoji + "NDX " + rut_emoji + "RUT"
+trend_color = is_spx_bull and is_ndx_bull and is_rut_bull ? color.green : 
+              not is_spx_bull and not is_ndx_bull and not is_rut_bull ? color.red : color.orange
 
 // 用于评分的 is_bull_market（使用主趋势）
 is_bull_market = is_primary_bull
