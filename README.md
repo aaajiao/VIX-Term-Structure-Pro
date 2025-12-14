@@ -45,7 +45,7 @@ VIX Term Structure Pro 是一款高级多因子市场择时指标，通过分析
 |-----------|------------|------------|
 | Overall Bias | STRONG BUY / BUY DIP | STRONG SELL / SELL/HEDGE |
 | AI Score | ≥ 5 (Extreme Fear) | ≤ -5 (Extreme Greed) |
-| Market Trend | 🟢SPX 🟢NDX (Above MA200) | 🔴SPX 🔴NDX (Below MA200) |
+| Market Trend | 🟢SPX 🟢NDX 🟢RUT (Above MA200) | 🔴SPX 🔴NDX 🔴RUT (Below MA200) |
 | VIX Regime | LOW VOL (<15) | HIGH VOL (>25) |
 | Term Struct Z | < -2.0 (Panic) | > 2.0 (Complacency) |
 
@@ -73,9 +73,9 @@ VIX Term Structure Pro 是一款高级多因子市场择时指标，通过分析
 
 ### Best Practices / 最佳实践
 
-1. **Apply to SPX/SPY/QQQ daily charts** for optimal signal accuracy
+1. **Apply to SPX/SPY/QQQ/IWM daily charts** for optimal signal accuracy
    
-   在 SPX/SPY/QQQ 日线图上使用，信号准确度最佳
+   在 SPX/SPY/QQQ/IWM 日线图上使用，信号准确度最佳
 
 2. **Wait for next trading day** to execute signals (signals trigger on daily close)
    
@@ -144,7 +144,8 @@ Built-in alert conditions with cooldown mechanism to prevent spam:
 - 🔬 Backtest Mode toggle for historical testing
 - 🎨 Configurable ±1 Z-Score reference lines
 - ⚡ Modular scoring functions
-- 🛡️ Dual index trend display (SPX + NDX)
+- 🛡️ Triple index trend display (SPX + NDX + RUT / Russell 2000)
+- 🔍 Auto-detect chart symbol (SPY/QQQ/IWM) for primary trend
 - 📱 Compact & Full dashboard modes
 
 ---
