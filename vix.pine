@@ -587,9 +587,9 @@ if is_sell_hedge and (bar_index - last_sell_alert_bar > alert_cooldown)
     last_sell_alert_bar := bar_index
 
 // alertcondition 用于创建警报（静态消息，用于 TradingView 警报面板）
-alertcondition(final_crash_buy, "Crash Buy Alert", "🚨 CRASH BUY: Score >= 6, extreme panic!")
-alertcondition(final_strong_buy, "Strong Buy Alert", "🟢 STRONG BUY: Score >= 5, multi-factor confluence!")
-alertcondition(final_buy_dip, "Buy Dip Alert", "🟡 BUY DIP: Score >= threshold, consider accumulating!")
-alertcondition(is_euphoria_sell, "Euphoria Sell Alert", "🔥 EUPHORIA SELL: Score <= -6, extreme greed!")
-alertcondition(is_strong_sell, "Strong Sell Alert", "🔴 STRONG SELL: Score <= -5, consider hedging!")
-alertcondition(is_basis_panic, "VIX Basis Panic", "VIX Spot Premium > threshold, high fear detected!")
+alertcondition(final_crash_buy, "🚨 Crash Buy Alert", "🚨 CRASH BUY: Score >= 6, extreme panic!")
+alertcondition(final_strong_buy, "🟢 Strong Buy Alert", "🟢 STRONG BUY: Score >= 5, multi-factor confluence!")
+alertcondition(final_buy_dip, "🟡 Buy Dip Alert", "🟡 BUY DIP: Score >= threshold, consider accumulating!")
+alertcondition(is_euphoria_sell, "🔥 Euphoria Sell Alert", "🔥 EUPHORIA SELL: Score <= -6, extreme greed!")
+alertcondition(is_strong_sell, "🔴 Strong Sell Alert", "🔴 STRONG SELL: Score <= -5, consider hedging!")
+alertcondition(is_basis_panic, "🔥 VIX Basis Panic", "🔥 VIX Spot Premium > threshold, high fear detected!")
