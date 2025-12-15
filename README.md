@@ -267,13 +267,29 @@ Includes all Compact mode data plus: / 包含精简模式全部数据，另加�
 
 ### Reading the Z-Score Line | 解读 Z 分数线
 
-| Z-Score Range | Color | English | 中文 |
-|---------------|-------|---------|------|
-| < -2.5 | Deep Red | Extreme fear, potential buy | 极度恐慌，潜在买点 |
-| -2.5 to -1.5 | Red | Moderate fear | 中度恐慌 |
-| -1.5 to +1.5 | Orange | Neutral zone | 中性区域 |
-| +1.5 to +2.5 | Light Blue | Moderate complacency | 中度自满 |
-| > +2.5 | Blue | Extreme complacency, potential sell | 极度自满，潜在卖点 |
+![Z-Score Interpretation Guide](zscore_guide.png)
+
+#### Z-Score Zones & Trading Actions | Z 分数区域与交易操作
+
+| Zone | Z-Score | Color | Signal | English Action | 中文操作 |
+|------|---------|-------|--------|----------------|----------|
+| 🔴 **Extreme Fear** | < -2.5 | Deep Red | 🚨 CRASH BUY | Aggressive entry, rare opportunity | 激进进场，罕见机会 |
+| 🟠 **Moderate Fear** | -2.5 to -1.5 | Red | 🟢 STRONG BUY | Build positions gradually | 逐步建仓 |
+| 🟡 **Mild Fear** | -1.5 to -1.0 | Orange-Red | 🟡 BUY DIP | Consider adding to positions | 考虑加仓 |
+| ⚪ **Neutral** | -1.0 to +1.0 | Orange | WAIT/HOLD | No clear signal, wait | 无明确信号，观望 |
+| 🟡 **Mild Greed** | +1.0 to +1.5 | Light Orange | Caution | Monitor for reversal | 关注反转信号 |
+| 🟠 **Moderate Greed** | +1.5 to +2.5 | Light Blue | 🟠 SELL/HEDGE | Consider reducing exposure | 考虑减仓对冲 |
+| 🔴 **Extreme Greed** | > +2.5 | Blue | 🔥 EUPHORIA SELL | Strong sell signal, market overheated | 强卖出信号，市场过热 |
+
+#### Key Observations | 关键观察
+
+| Pattern | English | 中文 |
+|---------|---------|------|
+| Z crosses below -2.5 | Panic selling, institutional fear | 恐慌抛售，机构恐惧 |
+| Z rises from extreme lows | Recovery beginning, early buy | 复苏开始，早期买点 |
+| Z stays near zero | Balanced market, wait for direction | 市场平衡，等待方向 |
+| Z crosses above +2.5 | Complacency peak, prepare to hedge | 自满顶峰，准备对冲 |
+| Z falling from highs | Greed fading, watch for weakness | 贪婪消退，关注走弱 |
 
 ---
 
