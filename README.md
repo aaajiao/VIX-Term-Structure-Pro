@@ -237,6 +237,46 @@ Includes all Compact mode data plus: / 包含精简模式全部数据，另加�
 
 ---
 
+## 📈 Chart Guide | 图表指南
+
+![VIX Term Structure Pro Chart Guide](chart_guide.png)
+
+### Top Panel Elements | 上方面板元素
+
+| Element | Color | English | 中文 |
+|---------|-------|---------|------|
+| Price Candles | Red/Green | Daily price action | 日线价格走势 |
+| Trend MA | Blue | Adaptive trend moving average | 自适应趋势均线 |
+| SMA 200 | White | 200-day simple moving average | 200日简单均线 |
+| Short-term MA | Yellow | Short-term trend reference | 短期趋势参考 |
+| Trend Cloud | Blue shaded | Area between MAs showing trend | 均线间区域显示趋势 |
+| Resistance Zone | Red bands | Key resistance levels | 关键阻力位 |
+
+### Bottom Panel Elements | 下方面板元素 (VIX Indicator)
+
+| Element | Color | English | 中文 |
+|---------|-------|---------|------|
+| Term Structure Z-Score | Orange/Red line | Main indicator line (fear/greed) | 主指标线（恐慌/贪婪） |
+| Zero Line | Gray solid | Neutral reference | 中性参考线 |
+| ±1 Threshold | Yellow dashed | Mid-level threshold | 中间阈值 |
+| ±2.5 Threshold | Gray dashed | Strong signal threshold | 强信号阈值 |
+| Smart Volume | Cyan/Gray bars | VX1 futures volume (normalized) | VX1 期货成交量（归一化） |
+| 🟢🟡 Buy Signals | Green/Yellow labels | Buy signal markers | 买入信号标记 |
+| 🔴🟠 Sell Signals | Red/Orange labels | Sell signal markers | 卖出信号标记 |
+| Dashboard | Right panel | Real-time indicator values | 实时指标数值 |
+
+### Reading the Z-Score Line | 解读 Z 分数线
+
+| Z-Score Range | Color | English | 中文 |
+|---------------|-------|---------|------|
+| < -2.5 | Deep Red | Extreme fear, potential buy | 极度恐慌，潜在买点 |
+| -2.5 to -1.5 | Red | Moderate fear | 中度恐慌 |
+| -1.5 to +1.5 | Orange | Neutral zone | 中性区域 |
+| +1.5 to +2.5 | Light Blue | Moderate complacency | 中度自满 |
+| > +2.5 | Blue | Extreme complacency, potential sell | 极度自满，潜在卖点 |
+
+---
+
 ## 📖 Usage Guide | 使用指南
 
 ### Best Practices | 最佳实践
