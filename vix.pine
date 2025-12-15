@@ -1,8 +1,8 @@
 //@version=6
-indicator("VIX Term Structure Pro [v7.2 Enhanced]", overlay=false, max_lines_count=500)
+indicator("VIX Term Structure Pro [v7.3 Enhanced]", overlay=false, max_lines_count=500)
 
 // ╔════════════════════════════════════════════════════════════════════════════╗
-// ║                    VIX Term Structure Pro v7.2 使用指南                      ║
+// ║                    VIX Term Structure Pro v7.3 使用指南                      ║
 // ╠════════════════════════════════════════════════════════════════════════════╣
 // ║ 📊 仪表盘指标解读                                                           ║
 // ║----------------------------------------------------------------------------║
@@ -94,6 +94,7 @@ use_momentum_confirm = input.bool(true, "Use Momentum Confirmation", group=grp_c
 momentum_bars = input.int(3, "Momentum Lookback Bars", minval=1, maxval=10, group=grp_confirm)
 z_momentum_neutral_zone = input.float(0.05, "Z Momentum Neutral Zone", minval=0.01, maxval=0.2, step=0.01, group=grp_confirm, tooltip="Z-Score change threshold to filter noise")
 use_mtf_confirm = input.bool(false, "Use Weekly MTF Confirmation", group=grp_confirm, tooltip="Require weekly Z-Score alignment for strongest signals")
+signal_display_cooldown = input.int(5, "Signal Display Cooldown (Bars)", minval=1, maxval=20, group=grp_confirm, tooltip="同类型信号最少间隔K线数，避免 sell_hedge/buy_dip 频繁触发")
 
 // ────────────────────────────────────────────────────────────────────────────
 // 🎨 图表样式 (Chart Style)
@@ -361,7 +362,7 @@ score := calc_z_score_points(z, thresh_mid, thresh_strong) +
          (use_mtf_confirm and z > thresh_mid and is_weekly_sell_aligned ? -1 : 0) +
          (use_trend_filter and not is_bull_market ? -2 : 0)
 
-// ========== 5. 三级买入信号 (v7.0 新增) ==========
+// ========== 5. 三级买入信号 (v7.0 新增, v7.3 优化) ==========
 // 基于 Score 评级的信号触发（首次进入该评级时触发）
 is_crash_buy_raw = score >= 6 and score[1] < 6
 is_strong_buy_raw = score >= 5 and score < 6 and score[1] < 5
@@ -375,10 +376,37 @@ is_sell_hedge_raw = score <= -2 and score > -5 and score[1] > -2
 // 信号确认机制 (v7.1 新增) - 仅在 K 线确认后触发
 is_crash_buy = use_confirmed_signals ? (is_crash_buy_raw and barstate.isconfirmed) : is_crash_buy_raw
 is_strong_buy = use_confirmed_signals ? (is_strong_buy_raw and barstate.isconfirmed) : is_strong_buy_raw
-is_buy_dip = use_confirmed_signals ? (is_buy_dip_raw and barstate.isconfirmed) : is_buy_dip_raw
+is_buy_dip_base = use_confirmed_signals ? (is_buy_dip_raw and barstate.isconfirmed) : is_buy_dip_raw
 is_euphoria_sell = use_confirmed_signals ? (is_euphoria_sell_raw and barstate.isconfirmed) : is_euphoria_sell_raw
 is_strong_sell = use_confirmed_signals ? (is_strong_sell_raw and barstate.isconfirmed) : is_strong_sell_raw
-is_sell_hedge = use_confirmed_signals ? (is_sell_hedge_raw and barstate.isconfirmed) : is_sell_hedge_raw
+is_sell_hedge_base = use_confirmed_signals ? (is_sell_hedge_raw and barstate.isconfirmed) : is_sell_hedge_raw
+
+// ===== v7.3 新增：信号冷却追踪变量 =====
+var int last_sell_hedge_bar = 0
+var int last_buy_dip_bar = 0
+
+// ===== v7.3 新增：增强版 sell_hedge/buy_dip 信号过滤 =====
+// sell_hedge 增强条件：
+// 1. VIX Regime 不是 LOW VOL（低波动期不需要对冲）
+// 2. Z Momentum 上升（贪婪加剧）或 Weekly 卖出对齐
+// 3. 满足信号冷却间隔
+is_sell_hedge_momentum_ok = z_momentum_bearish or (use_mtf_confirm and is_weekly_sell_aligned) or not use_momentum_confirm
+is_sell_hedge_cooldown_ok = bar_index - last_sell_hedge_bar > signal_display_cooldown
+is_sell_hedge = is_sell_hedge_base and vix_regime != 1 and is_sell_hedge_momentum_ok and is_sell_hedge_cooldown_ok
+
+// buy_dip 增强条件：
+// 1. VIX Regime 不是 HIGH VOL（高波动期等待更强信号）
+// 2. Z Momentum 下降（恐慌加剧）或 Weekly 买入对齐
+// 3. 满足信号冷却间隔
+is_buy_dip_momentum_ok = z_momentum_bullish or (use_mtf_confirm and is_weekly_buy_aligned) or not use_momentum_confirm
+is_buy_dip_cooldown_ok = bar_index - last_buy_dip_bar > signal_display_cooldown
+is_buy_dip = is_buy_dip_base and vix_regime != 3 and is_buy_dip_momentum_ok and is_buy_dip_cooldown_ok
+
+// 更新冷却追踪
+if is_sell_hedge
+    last_sell_hedge_bar := bar_index
+if is_buy_dip
+    last_buy_dip_bar := bar_index
 
 // 趋势过滤
 is_signal_allowed = use_trend_filter ? is_bull_market : true
@@ -386,7 +414,7 @@ is_signal_allowed = use_trend_filter ? is_bull_market : true
 // 最终信号（用于 Alert 和图表标签）
 final_crash_buy = is_crash_buy  // CRASH BUY 不受趋势过滤限制
 final_strong_buy = is_strong_buy  // STRONG BUY 不受趋势过滤限制
-final_buy_dip = is_buy_dip and is_signal_allowed  // BUY DIP 受趋势过滤
+final_buy_dip = is_buy_dip and is_signal_allowed  // BUY DIP 受趋势过滤 + v7.3 增强过滤
 
 final_buy_signal = final_crash_buy or final_strong_buy or final_buy_dip
 final_sell_signal = is_euphoria_sell or is_strong_sell or is_sell_hedge
