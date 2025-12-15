@@ -1,7 +1,7 @@
-# VIX Term Structure Pro v7.1 Enhanced
+# VIX Term Structure Pro v7.2 Enhanced
 
 [![TradingView](https://img.shields.io/badge/TradingView-Indicator-blue?logo=tradingview)](https://www.tradingview.com/)
-[![Pine Script](https://img.shields.io/badge/Pine%20Script-v5-brightgreen)](https://www.tradingview.com/pine-script-docs/en/v5/)
+[![Pine Script](https://img.shields.io/badge/Pine%20Script-v6-brightgreen)](https://www.tradingview.com/pine-script-docs/en/v6/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **Professional VIX-based Market Sentiment & Timing Indicator**
@@ -98,7 +98,7 @@ Includes all Compact mode data plus:
 |------|------|------|----------|
 | **Fixed** | 固定长度 SMA/EMA | 简单直接，用户完全控制 | 偏好经典技术分析 |
 | **Adaptive** (默认) | 根据 VIX 水平动态切换均线长度 | 与项目 VIX 为中心的设计一致 | 波动率驱动型交易 |
-| **KAMA** | Kaufman 自适应均线，根据价格效率调整 | 对趋势反转反应更快 | 短线交易、注重价格行为 |
+| **KAMA** | Kaufman 自适应均线，根据价格效率调整 | 对趋势反转反应更快，过滤噪音 | 短线交易、注重价格行为 |
 
 - **When ON**: Disables 🟡 BUY DIP signals when primary index is below trend MA
 - **CRASH/STRONG BUY**: Always allowed regardless of trend (extreme panic overrides)
@@ -332,7 +332,11 @@ Total Score =
 
 ## 📋 Changelog / 更新日志
 
-### v7.1 Enhanced (Current)
+### v7.2 Enhanced (Current)
+- 🚀 **Pine Script v6 升级**: 允许使用真正的 `ta.kama()` 函数
+- 🛡️ **KAMA 趋势过滤**: Kaufman 自适应均线，根据价格效率自动调整平滑度
+
+### v7.1 Enhanced
 - 🛡️ **自适应趋势过滤器**: 支持 Fixed/Adaptive/KAMA 三种模式
 - 🔒 **信号确认机制**: 默认仅在K线收盘时触发信号，避免盘中频闪
 - 📈 **VVIX 自适应阈值**: 支持 Fixed/Percentile/Z-Score 三种模式

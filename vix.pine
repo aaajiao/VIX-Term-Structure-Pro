@@ -1,8 +1,8 @@
-//@version=5
-indicator("VIX Term Structure Pro [v7.1 Enhanced]", overlay=false, max_lines_count=500)
+//@version=6
+indicator("VIX Term Structure Pro [v7.2 Enhanced]", overlay=false, max_lines_count=500)
 
 // ╔════════════════════════════════════════════════════════════════════════════╗
-// ║                    VIX Term Structure Pro v7.1 使用指南                      ║
+// ║                    VIX Term Structure Pro v7.2 使用指南                      ║
 // ╠════════════════════════════════════════════════════════════════════════════╣
 // ║ 📊 仪表盘指标解读                                                           ║
 // ║----------------------------------------------------------------------------║
@@ -16,7 +16,7 @@ indicator("VIX Term Structure Pro [v7.1 Enhanced]", overlay=false, max_lines_cou
 // ╠════════════════════════════════════════════════════════════════════════════╣
 // ║ 📌 v7.1 新增功能                                                            ║
 // ║----------------------------------------------------------------------------║
-// ║ 🛡️ 趋势 MA 模式   │ Fixed / Adaptive / Fast EMA 三种模式可选          ║
+// ║ 🛡️ 趋势 MA 模式   │ Fixed / Adaptive / KAMA 三种模式可选                ║
 // ║ 🔒 信号确认       │ 默认仅 K 线收盘时触发，避免盘中频闪                  ║
 // ║ 📈 VVIX 自适应    │ Fixed / Percentile / Z-Score 三种阈值模式          ║
 // ║  仪表盘位置     │ 6 种位置可选                                        ║
@@ -42,6 +42,22 @@ calc_pcr_points(pcr_val) =>
 calc_vvix_points(vvix_val, use_vvix) =>
     not use_vvix or na(vvix_val) ? 0 : vvix_val > 130 ? 1 : vvix_val < 80 ? -1 : 0
 
+// ========== KAMA 自定义实现 (Kaufman Adaptive Moving Average) ==========
+// 由于 ta.kama() 在某些环境不可用，手动实现
+calc_kama(src, length, fastLen, slowLen) =>
+    // 计算效率比率 (Efficiency Ratio)
+    change_sum = math.abs(src - src[length])
+    volatility = math.sum(math.abs(src - src[1]), length)
+    er = volatility != 0 ? change_sum / volatility : 0.0
+    // 计算平滑常数 (Smoothing Constant)
+    fast_sc = 2.0 / (fastLen + 1)
+    slow_sc = 2.0 / (slowLen + 1)
+    sc = math.pow(er * (fast_sc - slow_sc) + slow_sc, 2)
+    // 计算 KAMA (递归)
+    var float kama = na
+    kama := na(kama[1]) ? src : kama[1] + sc * (src - kama[1])
+    kama
+
 // ========== 1. 参数设置 ==========
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -63,7 +79,7 @@ use_trend_filter = input.bool(true, "🛡️ Market Trend Filter", group=grp_str
 auto_detect_index = input.bool(true, "Auto-Detect Index (Based on Chart)", group=grp_strategy, tooltip="Auto: If chart is QQQ/NQ/NDX related, use NDX as primary. Otherwise use SPX.\nManual: Use the symbol specified in Data Sources.")
 
 // 自适应趋势过滤器设置 (v7.1 新增)
-trend_ma_mode = input.string("Adaptive", "Trend MA Mode", options=["Fixed", "Adaptive", "Fast EMA"], group=grp_strategy, tooltip="Fixed: 固定长度均线，用户自定义类型和长度\nAdaptive: 波动率自适应，高波动用短均线(更敏感)，低波动用长均线(更平滑)\nFast EMA: 快速指数均线，比SMA更灵敏，适合捕捉趋势反转")
+trend_ma_mode = input.string("Adaptive", "Trend MA Mode", options=["Fixed", "Adaptive", "KAMA"], group=grp_strategy, tooltip="Fixed: 固定长度均线，用户自定义类型和长度\nAdaptive: 波动率自适应，高波动用短均线(更敏感)，低波动用长均线(更平滑)\nKAMA: Kaufman自适应均线，根据价格效率自动调整平滑度")
 trend_ma_type = input.string("SMA", "└─ Fixed MA Type", options=["SMA", "EMA"], group=grp_strategy, tooltip="仅用于 Fixed 模式\nSMA: 简单移动平均线，更稳定\nEMA: 指数移动平均线，更灵敏")
 trend_ma_length_high = input.int(100, "└─ Adaptive Length (High Vol)", minval=20, maxval=200, group=grp_strategy, tooltip="高波动期 (VIX > 阈值) 使用的较短均线长度，反应更灵敏")
 trend_ma_length_low = input.int(200, "└─ Adaptive/Fixed Length (Low Vol)", minval=100, maxval=500, group=grp_strategy, tooltip="低波动期使用的较长均线长度，也用作 Fixed 模式的默认长度")
@@ -210,18 +226,17 @@ rut_ma_adapt_low = request.security("TVC:RUT", "D", ta.sma(close, trend_ma_lengt
 manual_ma_adapt_high = request.security(manual_trend_src, "D", ta.sma(close, trend_ma_length_high), ignore_invalid_symbol=true)
 manual_ma_adapt_low = request.security(manual_trend_src, "D", ta.sma(close, trend_ma_length_low), ignore_invalid_symbol=true)
 
-// KAMA 模式：使用快速 EMA 作为自适应均线替代
-// 注：Pine Script 不支持 ta.kama，改用 EMA 近似
-spx_ma_kama = request.security("SP:SPX", "D", ta.ema(close, kama_length), ignore_invalid_symbol=true)
-ndx_ma_kama = request.security("NASDAQ:NDX", "D", ta.ema(close, kama_length), ignore_invalid_symbol=true)
-rut_ma_kama = request.security("TVC:RUT", "D", ta.ema(close, kama_length), ignore_invalid_symbol=true)
-manual_ma_kama = request.security(manual_trend_src, "D", ta.ema(close, kama_length), ignore_invalid_symbol=true)
+// KAMA 模式：Kaufman 自适应均线 (使用自定义实现)
+spx_ma_kama = request.security("SP:SPX", "D", calc_kama(close, kama_length, 2, 30), ignore_invalid_symbol=true)
+ndx_ma_kama = request.security("NASDAQ:NDX", "D", calc_kama(close, kama_length, 2, 30), ignore_invalid_symbol=true)
+rut_ma_kama = request.security("TVC:RUT", "D", calc_kama(close, kama_length, 2, 30), ignore_invalid_symbol=true)
+manual_ma_kama = request.security(manual_trend_src, "D", calc_kama(close, kama_length, 2, 30), ignore_invalid_symbol=true)
 
 // 根据模式选择最终使用的均线
-spx_trend_ma = trend_ma_mode == "Fast EMA" ? spx_ma_kama : trend_ma_mode == "Adaptive" ? (is_high_vol_regime ? spx_ma_adapt_high : spx_ma_adapt_low) : spx_ma_fixed
-ndx_trend_ma = trend_ma_mode == "Fast EMA" ? ndx_ma_kama : trend_ma_mode == "Adaptive" ? (is_high_vol_regime ? ndx_ma_adapt_high : ndx_ma_adapt_low) : ndx_ma_fixed
-rut_trend_ma = trend_ma_mode == "Fast EMA" ? rut_ma_kama : trend_ma_mode == "Adaptive" ? (is_high_vol_regime ? rut_ma_adapt_high : rut_ma_adapt_low) : rut_ma_fixed
-manual_trend_ma = trend_ma_mode == "Fast EMA" ? manual_ma_kama : trend_ma_mode == "Adaptive" ? (is_high_vol_regime ? manual_ma_adapt_high : manual_ma_adapt_low) : manual_ma_fixed
+spx_trend_ma = trend_ma_mode == "KAMA" ? spx_ma_kama : trend_ma_mode == "Adaptive" ? (is_high_vol_regime ? spx_ma_adapt_high : spx_ma_adapt_low) : spx_ma_fixed
+ndx_trend_ma = trend_ma_mode == "KAMA" ? ndx_ma_kama : trend_ma_mode == "Adaptive" ? (is_high_vol_regime ? ndx_ma_adapt_high : ndx_ma_adapt_low) : ndx_ma_fixed
+rut_trend_ma = trend_ma_mode == "KAMA" ? rut_ma_kama : trend_ma_mode == "Adaptive" ? (is_high_vol_regime ? rut_ma_adapt_high : rut_ma_adapt_low) : rut_ma_fixed
+manual_trend_ma = trend_ma_mode == "KAMA" ? manual_ma_kama : trend_ma_mode == "Adaptive" ? (is_high_vol_regime ? manual_ma_adapt_high : manual_ma_adapt_low) : manual_ma_fixed
 
 valid_data = not na(vix) and not na(vx1) and not na(vx2)
 
