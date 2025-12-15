@@ -64,69 +64,69 @@ calc_kama(src, length, fastLen, slowLen) =>
 // 📡 数据源设置 (Data Sources)
 // ────────────────────────────────────────────────────────────────────────────
 grp_data = "📡 Data Sources"
-backtest_mode = input.bool(false, "🔬 Backtest Mode", group=grp_data, tooltip="OFF: 实时模式，显示当日数据（适合实盘监控）\nON: 回测模式，仅使用已确认的历史数据（避免未来函数）")
-sym_vix_input = input.symbol("CBOE:VIX", "VIX Symbol", group=grp_data, tooltip="Default: CBOE:VIX. Alternative: TVC:VIX")
-vix_timeframe = input.string("Daily", "VIX Timeframe", options=["Daily", "Chart"], group=grp_data, tooltip="Daily: 使用日线收盘价（稳定）\nChart: 跟随当前图表时间框架（更实时）")
-sym_pcr_input = input.symbol("INDEX:CPCI", "Put/Call Ratio Symbol", group=grp_data, tooltip="Default: INDEX:CPCI (Index P/C). Alternative: INDEX:PCC (Equity P/C)")
-manual_trend_src = input.symbol("SP:SPX", "Manual Trend Source", group=grp_data, tooltip="Only used when Auto-Detect Index is OFF")
+backtest_mode = input.bool(false, "🔬 Backtest Mode", group=grp_data, tooltip="OFF: 实时模式 Live mode\nON: 回测模式 Backtest mode (无重绘 no repaint)")
+sym_vix_input = input.symbol("CBOE:VIX", "VIX Symbol", group=grp_data, tooltip="VIX数据源 VIX data source\n默认 Default: CBOE:VIX")
+vix_timeframe = input.string("Daily", "VIX Timeframe", options=["Daily", "Chart"], group=grp_data, tooltip="Daily: 日线收盘价 daily close (稳定 stable)\nChart: 跟随图表 follow chart (实时 real-time)")
+sym_pcr_input = input.symbol("INDEX:CPCI", "Put/Call Ratio Symbol", group=grp_data, tooltip="看跌/看涨比率 Put/Call Ratio\n默认 Default: INDEX:CPCI (指数期权 Index options)")
+manual_trend_src = input.symbol("SP:SPX", "Manual Trend Source", group=grp_data, tooltip="手动趋势源 Manual trend source\n仅当自动检测关闭时使用 Only used when Auto-Detect is OFF")
 
 // ────────────────────────────────────────────────────────────────────────────
 // ⚠️ 策略模式 (Strategy Mode) - 核心设置
 // ────────────────────────────────────────────────────────────────────────────
 grp_strategy = "⚠️ Strategy Mode (核心设置)"
-sens_mode = input.string("Low (Trend/Safe)", "Signal Sensitivity", options=["High (Scalping)", "Normal (Swing)", "Low (Trend/Safe)"], group=grp_strategy, tooltip="High: 更敏感，适合短线\nNormal: 平衡模式\nLow: 更保守，适合趋势跟踪")
-use_trend_filter = input.bool(true, "🛡️ Market Trend Filter", group=grp_strategy, tooltip="If ON: 'BUY DIP' is DISABLED when primary index is below trend MA.\nOnly 'STRONG BUY' (Crash) signals are allowed in Bear Markets.")
-auto_detect_index = input.bool(true, "Auto-Detect Index (Based on Chart)", group=grp_strategy, tooltip="Auto: If chart is QQQ/NQ/NDX related, use NDX as primary. Otherwise use SPX.\nManual: Use the symbol specified in Data Sources.")
+sens_mode = input.string("Low (Trend/Safe)", "Signal Sensitivity", options=["High (Scalping)", "Normal (Swing)", "Low (Trend/Safe)"], group=grp_strategy, tooltip="High: 高敏感度 Sensitive (短线 scalping)\nNormal: 平衡 Balanced (波段 swing)\nLow: 保守 Conservative (趋势 trend)")
+use_trend_filter = input.bool(true, "🛡️ Market Trend Filter", group=grp_strategy, tooltip="ON: 熊市过滤 BUY DIP Filter in bear market\n仅 STRONG BUY 不受限制 Only STRONG BUY allowed")
+auto_detect_index = input.bool(true, "Auto-Detect Index (Based on Chart)", group=grp_strategy, tooltip="ON: 自动检测 Auto-detect (QQQ→NDX, 其他→SPX)\nOFF: 使用手动趋势源 Use manual trend source")
 
 // 自适应趋势过滤器设置 (v7.1 新增)
-trend_ma_mode = input.string("Adaptive", "Trend MA Mode", options=["Fixed", "Adaptive", "KAMA"], group=grp_strategy, tooltip="Fixed: 固定长度均线，用户自定义类型和长度\nAdaptive: 波动率自适应，高波动用短均线(更敏感)，低波动用长均线(更平滑)\nKAMA: Kaufman自适应均线，根据价格效率自动调整平滑度")
-trend_ma_type = input.string("SMA", "└─ Fixed MA Type", options=["SMA", "EMA"], group=grp_strategy, tooltip="仅用于 Fixed 模式\nSMA: 简单移动平均线，更稳定\nEMA: 指数移动平均线，更灵敏")
-trend_ma_length_high = input.int(100, "└─ Adaptive Length (High Vol)", minval=20, maxval=200, group=grp_strategy, tooltip="高波动期 (VIX > 阈值) 使用的较短均线长度，反应更灵敏")
-trend_ma_length_low = input.int(200, "└─ Adaptive/Fixed Length (Low Vol)", minval=100, maxval=500, group=grp_strategy, tooltip="低波动期使用的较长均线长度，也用作 Fixed 模式的默认长度")
-kama_length = input.int(21, "└─ KAMA Length", minval=5, maxval=50, group=grp_strategy, tooltip="KAMA 效率比率计算周期，较短周期对趋势反转反应更快")
+trend_ma_mode = input.string("Adaptive", "Trend MA Mode", options=["Fixed", "Adaptive", "KAMA"], group=grp_strategy, tooltip="Fixed: 固定均线 Fixed MA\nAdaptive: 波动自适应 Vol-adaptive\nKAMA: 效率自适应 Efficiency-adaptive")
+trend_ma_type = input.string("SMA", "└─ Fixed MA Type", options=["SMA", "EMA"], group=grp_strategy, tooltip="仅Fixed模式 For Fixed mode only\nSMA: 稳定 Stable / EMA: 灵敏 Responsive")
+trend_ma_length_high = input.int(100, "└─ Adaptive Length (High Vol)", minval=20, maxval=200, group=grp_strategy, tooltip="高波动期均线长度 MA length for high vol\n更短=更敏感 Shorter=more sensitive")
+trend_ma_length_low = input.int(200, "└─ Adaptive/Fixed Length (Low Vol)", minval=100, maxval=500, group=grp_strategy, tooltip="低波动期/Fixed默认长度 MA length for low vol/Fixed\n更长=更平滑 Longer=smoother")
+kama_length = input.int(21, "└─ KAMA Length", minval=5, maxval=50, group=grp_strategy, tooltip="KAMA计算周期 KAMA lookback\n较短=反应更快 Shorter=faster response")
 
 // ────────────────────────────────────────────────────────────────────────────
 // 🎯 信号确认 (Signal Confirmation)
 // ────────────────────────────────────────────────────────────────────────────
 grp_confirm = "🎯 Signal Confirmation"
-use_confirmed_signals = input.bool(true, "🔒 Confirmed Signals Only", group=grp_confirm, tooltip="ON: 信号仅在K线收盘时确认触发（推荐用于实际交易）\nOFF: 实时信号更新（可能盘中频闪，仅供监控）")
-use_momentum_confirm = input.bool(true, "Use Momentum Confirmation", group=grp_confirm, tooltip="Require Z-Score momentum to confirm signals")
-momentum_bars = input.int(3, "Momentum Lookback Bars", minval=1, maxval=10, group=grp_confirm)
-z_momentum_neutral_zone = input.float(0.05, "Z Momentum Neutral Zone", minval=0.01, maxval=0.2, step=0.01, group=grp_confirm, tooltip="Z-Score change threshold to filter noise")
-use_mtf_confirm = input.bool(false, "Use Weekly MTF Confirmation", group=grp_confirm, tooltip="Require weekly Z-Score alignment for strongest signals")
-signal_display_cooldown = input.int(5, "Signal Display Cooldown (Bars)", minval=1, maxval=20, group=grp_confirm, tooltip="同类型信号最少间隔K线数，避免 sell_hedge/buy_dip 频繁触发")
+use_confirmed_signals = input.bool(true, "🔒 Confirmed Signals Only", group=grp_confirm, tooltip="ON: K线收盘确认 Confirm on bar close (推荐 recommended)\nOFF: 实时信号 Real-time (可能频闪 may flicker)")
+use_momentum_confirm = input.bool(true, "Use Momentum Confirmation", group=grp_confirm, tooltip="启用动量确认 Enable momentum confirmation\n需要Z-Score有方向性变化 Require Z-Score direction")
+momentum_bars = input.int(3, "Momentum Lookback Bars", minval=1, maxval=10, group=grp_confirm, tooltip="动量计算周期 Momentum lookback period")
+z_momentum_neutral_zone = input.float(0.05, "Z Momentum Neutral Zone", minval=0.01, maxval=0.2, step=0.01, group=grp_confirm, tooltip="Z动量中性区 Z momentum neutral zone\n过滤噪音 Filter noise")
+use_mtf_confirm = input.bool(false, "Use Weekly MTF Confirmation", group=grp_confirm, tooltip="周线确认 Weekly confirmation\n需要周线Z方向一致 Require weekly Z alignment")
+signal_display_cooldown = input.int(5, "Signal Display Cooldown (Bars)", minval=1, maxval=20, group=grp_confirm, tooltip="信号冷却间隔 Signal cooldown (bars)\n避免同类信号频繁触发 Prevent frequent triggers")
 
 // ────────────────────────────────────────────────────────────────────────────
 // 🎨 图表样式 (Chart Style)
 // ────────────────────────────────────────────────────────────────────────────
 grp_chart = "🎨 Chart Style"
-show_z      = input.bool(true, "Show Term Struct Z-Score", group=grp_chart)
-show_skew   = input.bool(false, "Show Scaled SKEW Line", group=grp_chart)
-show_volume = input.bool(true, "Show Smart Volume", group=grp_chart)
-mid_line_color = input.color(color.yellow, "±1 Line Color", group=grp_chart)
-mid_line_style = input.string("Dashed", "±1 Line Style", options=["Solid", "Dashed", "Dotted"], group=grp_chart)
+show_z      = input.bool(true, "Show Term Struct Z-Score", group=grp_chart, tooltip="显示期限结构Z值 Show term structure Z-Score")
+show_skew   = input.bool(false, "Show Scaled SKEW Line", group=grp_chart, tooltip="显示SKEW线 Show SKEW line (缩放显示 scaled)")
+show_volume = input.bool(true, "Show Smart Volume", group=grp_chart, tooltip="显示智能成交量 Show smart volume bars")
+mid_line_color = input.color(color.yellow, "±1 Line Color", group=grp_chart, tooltip="±1线颜色 ±1 line color")
+mid_line_style = input.string("Dashed", "±1 Line Style", options=["Solid", "Dashed", "Dotted"], group=grp_chart, tooltip="±1线样式 ±1 line style")
 
 // ────────────────────────────────────────────────────────────────────────────
 // 📋 仪表盘设置 (Dashboard)
 // ────────────────────────────────────────────────────────────────────────────
 grp_dashboard = "📋 Dashboard"
-show_table  = input.bool(true, "Show Dashboard", group=grp_dashboard)
-panel_mode  = input.string("Compact", "Dashboard Mode", options=["Compact", "Full"], group=grp_dashboard, tooltip="Compact: 8 rows, essential info only\nFull: 12+ rows, all indicators visible")
-table_position = input.string("Top Right", "Dashboard Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left", "Top Center", "Bottom Center"], group=grp_dashboard, tooltip="仪表盘在图表上的位置")
-table_size  = input.string("Normal", "Dashboard Text Size", options=["Small", "Normal", "Large"], group=grp_dashboard)
-bg_transp   = input.int(70, "Dashboard Transparency", minval=0, maxval=100, group=grp_dashboard)
+show_table  = input.bool(true, "Show Dashboard", group=grp_dashboard, tooltip="显示仪表盘 Show dashboard panel")
+panel_mode  = input.string("Compact", "Dashboard Mode", options=["Compact", "Full"], group=grp_dashboard, tooltip="Compact: 精简8行 Essential 8 rows\nFull: 完整12+行 Full 12+ rows")
+table_position = input.string("Top Right", "Dashboard Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left", "Top Center", "Bottom Center"], group=grp_dashboard, tooltip="仪表盘位置 Dashboard position")
+table_size  = input.string("Normal", "Dashboard Text Size", options=["Small", "Normal", "Large"], group=grp_dashboard, tooltip="文字大小 Text size")
+bg_transp   = input.int(70, "Dashboard Transparency", minval=0, maxval=100, group=grp_dashboard, tooltip="背景透明度 Background transparency\n0=不透明 Opaque / 100=全透明 Transparent")
 
 // ────────────────────────────────────────────────────────────────────────────
 // 📊 统计与警报 (Statistics & Alerts)
 // ────────────────────────────────────────────────────────────────────────────
 grp_stats = "📊 Statistics & Alerts"
-show_signal_stats = input.bool(true, "Show Signal Statistics", group=grp_stats)
-use_max_profit_stats = input.bool(false, "📈 Show Max Profit Stats", group=grp_stats, tooltip="OFF (默认): 显示点对点收益（N天后的实际收益）\nON: 额外显示N天内最高收益（增加计算复杂度）")
-stats_lookback_years = input.int(3, "Stats Lookback (Years)", minval=1, maxval=20, group=grp_stats, tooltip="Only count signals within the last N years")
-crash_return_bars = input.int(40, "🚨 CRASH Return Period (Bars)", minval=10, maxval=60, group=grp_stats, tooltip="~2 months for extreme panic recovery")
-strong_return_bars = input.int(20, "🟢 STRONG Return Period (Bars)", minval=10, maxval=40, group=grp_stats, tooltip="~1 month for strong signals")
-dip_return_bars = input.int(10, "🟡 DIP Return Period (Bars)", minval=5, maxval=20, group=grp_stats, tooltip="~2 weeks for dip buying")
-alert_cooldown = input.int(5, "Alert Cooldown (Bars)", minval=1, maxval=20, group=grp_stats, tooltip="Minimum bars between alerts to prevent spam")
+show_signal_stats = input.bool(true, "Show Signal Statistics", group=grp_stats, tooltip="显示信号统计 Show signal statistics")
+use_max_profit_stats = input.bool(false, "📈 Show Max Profit Stats", group=grp_stats, tooltip="OFF: 点对点收益 Point-to-point return\nON: 最高收益 Max profit (计算更复杂 more complex)")
+stats_lookback_years = input.int(3, "Stats Lookback (Years)", minval=1, maxval=20, group=grp_stats, tooltip="统计回溯年数 Stats lookback years\n仅统计此范围内信号 Only count signals within range")
+crash_return_bars = input.int(40, "🚨 CRASH Return Period (Bars)", minval=10, maxval=60, group=grp_stats, tooltip="CRASH信号收益周期 CRASH return period\n约2个月 ~2 months")
+strong_return_bars = input.int(20, "🟢 STRONG Return Period (Bars)", minval=10, maxval=40, group=grp_stats, tooltip="STRONG信号收益周期 STRONG return period\n约1个月 ~1 month")
+dip_return_bars = input.int(10, "🟡 DIP Return Period (Bars)", minval=5, maxval=20, group=grp_stats, tooltip="DIP信号收益周期 DIP return period\n约2周 ~2 weeks")
+alert_cooldown = input.int(5, "Alert Cooldown (Bars)", minval=1, maxval=20, group=grp_stats, tooltip="警报冷却间隔 Alert cooldown (bars)\n防止重复警报 Prevent spam")
 
 // ────────────────────────────────────────────────────────────────────────────
 // ⚙️ 高级设置 (Advanced Settings)
@@ -134,35 +134,35 @@ alert_cooldown = input.int(5, "Alert Cooldown (Bars)", minval=1, maxval=20, grou
 grp_advanced = "⚙️ Advanced Settings"
 
 // VIX Regime 阈值
-vix_low_thresh = input.float(15.0, "VIX Low Vol Threshold", minval=10, maxval=20, group=grp_advanced, tooltip="Below this = LOW VOL regime")
-vix_high_thresh = input.float(25.0, "VIX High Vol Threshold", minval=20, maxval=40, group=grp_advanced, tooltip="Above this = HIGH VOL regime")
+vix_low_thresh = input.float(15.0, "VIX Low Vol Threshold", minval=10, maxval=20, group=grp_advanced, tooltip="低波动阈值 Low vol threshold\n低于此值=LOW VOL Below=LOW VOL")
+vix_high_thresh = input.float(25.0, "VIX High Vol Threshold", minval=20, maxval=40, group=grp_advanced, tooltip="高波动阈值 High vol threshold\n高于此值=HIGH VOL Above=HIGH VOL")
 
 // 自适应阈值
-use_adaptive_thresholds = input.bool(true, "Use Adaptive Thresholds", group=grp_advanced, tooltip="Use percentile-based dynamic thresholds instead of fixed values")
-adapt_lookback = input.int(252, "Adaptive Lookback Period", minval=50, maxval=500, group=grp_advanced)
+use_adaptive_thresholds = input.bool(true, "Use Adaptive Thresholds", group=grp_advanced, tooltip="自适应阈值 Adaptive thresholds\n使用百分位动态阈值 Use percentile-based thresholds")
+adapt_lookback = input.int(252, "Adaptive Lookback Period", minval=50, maxval=500, group=grp_advanced, tooltip="自适应回溯周期 Adaptive lookback\n252=1年 1 year")
 
 // Z-Score 计算
-use_adaptive = input.bool(true, "Use Adaptive Lookback (Z-Score)", group=grp_advanced, tooltip="Shorter lookback in high-vol periods")
-len_low      = input.int(252, "Lookback (Low Vol)", minval=50, group=grp_advanced)
-len_high     = input.int(126, "Lookback (High Vol)", minval=20, group=grp_advanced)
-vol_thresh   = input.float(20.0, "Vol Regime Threshold", minval=10, group=grp_advanced)
+use_adaptive = input.bool(true, "Use Adaptive Lookback (Z-Score)", group=grp_advanced, tooltip="Z-Score自适应回溯 Adaptive Z lookback\n高波动期用短周期 Shorter in high vol")
+len_low      = input.int(252, "Lookback (Low Vol)", minval=50, group=grp_advanced, tooltip="低波动回溯 Low vol lookback\n252=1年 1 year")
+len_high     = input.int(126, "Lookback (High Vol)", minval=20, group=grp_advanced, tooltip="高波动回溯 High vol lookback\n126=半年 6 months")
+vol_thresh   = input.float(20.0, "Vol Regime Threshold", minval=10, group=grp_advanced, tooltip="波动区间阈值 Vol regime threshold\nVIX高于此值=高波动期 Above=high vol")
 
 // SKEW 设置
-skew_mode    = input.string("Relative (Z-Score)", "SKEW Logic Mode", options=["Relative (Z-Score)", "Percentile (Adaptive)", "Absolute (>140)"], group=grp_advanced)
-skew_len     = input.int(126, "SKEW Lookback Period", minval=20, group=grp_advanced)
+skew_mode    = input.string("Relative (Z-Score)", "SKEW Logic Mode", options=["Relative (Z-Score)", "Percentile (Adaptive)", "Absolute (>140)"], group=grp_advanced, tooltip="SKEW判断模式 SKEW logic mode\nZ-Score: 相对标准差 / Percentile: 百分位 / Absolute: 固定值")
+skew_len     = input.int(126, "SKEW Lookback Period", minval=20, group=grp_advanced, tooltip="SKEW回溯周期 SKEW lookback\n126=半年 6 months")
 
 // 成交量设置
-vol_avg_len  = input.int(20, "Volume Avg Length", minval=5, group=grp_advanced)
+vol_avg_len  = input.int(20, "Volume Avg Length", minval=5, group=grp_advanced, tooltip="成交量均线长度 Volume MA length")
 
 // ────────────────────────────────────────────────────────────────────────────
 // 📈 VVIX 设置 (Optional)
 // ────────────────────────────────────────────────────────────────────────────
 grp_vvix = "📈 VVIX (Optional)"
-use_vvix = input.bool(false, "Enable VVIX Integration", group=grp_vvix, tooltip="VVIX = VIX of VIX, measures expected volatility of VIX itself")
-vvix_threshold_mode = input.string("Z-Score", "VVIX Threshold Mode", options=["Fixed", "Percentile", "Z-Score"], group=grp_vvix, tooltip="Fixed: 使用固定阈值 (130/80)\nPercentile: 使用90/10分位数，对极端值不敏感，不假设正态分布\nZ-Score: 使用±2标准差，与项目其他逻辑一致，假设近似正态分布")
-vvix_z_thresh = input.float(2.0, "└─ Z-Score Threshold", minval=1.0, maxval=3.0, step=0.1, group=grp_vvix, tooltip="VVIX Z-Score 超过此值 = 恐慌，低于负值 = 平静")
-vvix_panic_thresh = input.float(130.0, "└─ Fixed Panic Threshold", minval=100, maxval=160, group=grp_vvix, tooltip="仅用于 Fixed 模式")
-vvix_calm_thresh = input.float(80.0, "└─ Fixed Calm Threshold", minval=60, maxval=100, group=grp_vvix, tooltip="仅用于 Fixed 模式")
+use_vvix = input.bool(false, "Enable VVIX Integration", group=grp_vvix, tooltip="启用VVIX Enable VVIX\nVVIX=VIX的波动率 VIX of VIX")
+vvix_threshold_mode = input.string("Z-Score", "VVIX Threshold Mode", options=["Fixed", "Percentile", "Z-Score"], group=grp_vvix, tooltip="Fixed: 固定阈值 Fixed (130/80)\nPercentile: 百分位 90/10 percentile\nZ-Score: 标准差 ±2 std dev")
+vvix_z_thresh = input.float(2.0, "└─ Z-Score Threshold", minval=1.0, maxval=3.0, step=0.1, group=grp_vvix, tooltip="VVIX Z阈值 Z threshold\n>阈值=恐慌 Panic / <-阈值=平静 Calm")
+vvix_panic_thresh = input.float(130.0, "└─ Fixed Panic Threshold", minval=100, maxval=160, group=grp_vvix, tooltip="Fixed模式恐慌阈值 Fixed panic threshold\n仅Fixed模式 For Fixed mode only")
+vvix_calm_thresh = input.float(80.0, "└─ Fixed Calm Threshold", minval=60, maxval=100, group=grp_vvix, tooltip="Fixed模式平静阈值 Fixed calm threshold\n仅Fixed模式 For Fixed mode only")
 
 // ────────────────────────────────────────────────────────────────────────────
 // 内部计算参数（基于策略模式）
