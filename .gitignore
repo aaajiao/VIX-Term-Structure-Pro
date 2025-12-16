@@ -19,5 +19,3 @@
 *.temp
 *.log
 
-# Agent specific
-.agent/
