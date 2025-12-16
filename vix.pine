@@ -133,7 +133,8 @@ stats_lookback_years = input.int(3, "Stats Lookback (Years)", minval=1, maxval=2
 crash_return_bars = input.int(40, "🚨 CRASH Return Period (Bars)", minval=10, maxval=60, group=grp_stats, tooltip="CRASH信号收益周期 CRASH return period\n约2个月 ~2 months")
 strong_return_bars = input.int(20, "🟢 STRONG Return Period (Bars)", minval=10, maxval=40, group=grp_stats, tooltip="STRONG信号收益周期 STRONG return period\n约1个月 ~1 month")
 dip_return_bars = input.int(10, "🟡 DIP Return Period (Bars)", minval=5, maxval=20, group=grp_stats, tooltip="DIP信号收益周期 DIP return period\n约2周 ~2 weeks")
-alert_cooldown = input.int(5, "Alert Cooldown (Bars)", minval=1, maxval=20, group=grp_stats, tooltip="警报冷却间隔 Alert cooldown (bars)\n防止重复警报 Prevent spam")
+enable_smart_alert = input.bool(true, "🔔 Smart Alert", group=grp_stats, tooltip="启用智能警报 Enable Smart Alert\n单条消息汇总所有信号 Aggregated signal message")
+alert_cooldown_base = input.int(5, "Alert Cooldown Base (Bars)", minval=1, maxval=20, group=grp_stats, tooltip="基础冷却间隔 Base cooldown\n高波动期减半 Halved in high vol")
 
 // ────────────────────────────────────────────────────────────────────────────
 // ⚙️ 高级设置 (Advanced Settings)
@@ -710,40 +711,60 @@ if show_table and barstate.islast
         table.cell(panel, 0, warning_row_idx, "⚠️ Live Mode", bgcolor=color.new(color.orange, 85), text_color=color.orange, text_size=size.tiny, text_halign=text.align_left)
         table.cell(panel, 1, warning_row_idx, "Historical Repaints", bgcolor=color.new(color.orange, 85), text_color=color.orange, text_size=size.tiny)
 
-// ========== 10. 增强版 Alerts (带冷却机制) ==========
+// ========== 10. SMART ALERT (Unified Alert System) ==========
+// 基于 Adaptive RSI 的智能警报：信号聚合 + 上升沿检测 + VIX Regime 自适应冷却
+// 高波动期(HIGH VOL)冷却减半 → 市场变化快，需要更及时的信号
+// 低波动期(LOW VOL)冷却加倍 → 市场平静，减少不必要通知
+
 var int last_buy_alert_bar = 0
 var int last_sell_alert_bar = 0
-var int last_extreme_alert_bar = 0
 
-// 使用 alert() 发送动态消息（包含实时数值）- 带冷却
-if final_crash_buy and (bar_index - last_extreme_alert_bar > alert_cooldown)
-    alert("🚨 CRASH BUY! Score=" + str.tostring(score, "#") + " | Z=" + str.tostring(z, "#.##") + " | Basis=" + str.tostring(vix_basis, "#.#") + "%", alert.freq_once_per_bar)
-    last_extreme_alert_bar := bar_index
+// VIX Regime 自适应冷却：高波动减半，低波动加倍
+adaptive_cooldown = vix_regime == 3 ? math.round(alert_cooldown_base / 2) : vix_regime == 1 ? alert_cooldown_base * 2 : alert_cooldown_base
 
-if final_strong_buy and (bar_index - last_buy_alert_bar > alert_cooldown)
-    alert("🟢 STRONG BUY | Score=" + str.tostring(score, "#") + " | Z=" + str.tostring(z, "#.##") + " | Contango=" + str.tostring(contango_pct, "#.#") + "%", alert.freq_once_per_bar)
-    last_buy_alert_bar := bar_index
-
-if final_buy_dip and (bar_index - last_buy_alert_bar > alert_cooldown)
-    alert("🟡 BUY DIP | Score=" + str.tostring(score, "#") + " | Z=" + str.tostring(z, "#.##") + " | Basis=" + str.tostring(vix_basis, "#.#") + "%", alert.freq_once_per_bar)
-    last_buy_alert_bar := bar_index
-
-if is_euphoria_sell and (bar_index - last_extreme_alert_bar > alert_cooldown)
-    alert("🔥 EUPHORIA SELL! Score=" + str.tostring(score, "#") + " | Z=" + str.tostring(z, "#.##") + " | SKEW=" + str.tostring(skew, "#"), alert.freq_once_per_bar)
-    last_extreme_alert_bar := bar_index
-
-if is_strong_sell and (bar_index - last_sell_alert_bar > alert_cooldown)
-    alert("🔴 STRONG SELL | Score=" + str.tostring(score, "#") + " | Z=" + str.tostring(z, "#.##"), alert.freq_once_per_bar)
-    last_sell_alert_bar := bar_index
-
-if is_sell_hedge and (bar_index - last_sell_alert_bar > alert_cooldown)
-    alert("🟠 SELL/HEDGE | Score=" + str.tostring(score, "#") + " | Z=" + str.tostring(z, "#.##"), alert.freq_once_per_bar)
-    last_sell_alert_bar := bar_index
-
-// alertcondition 用于创建警报（静态消息，用于 TradingView 警报面板）
-alertcondition(final_crash_buy, "🚨 Crash Buy Alert", "🚨 CRASH BUY: Score >= 6, extreme panic!")
-alertcondition(final_strong_buy, "🟢 Strong Buy Alert", "🟢 STRONG BUY: Score >= 5, multi-factor confluence!")
-alertcondition(final_buy_dip, "🟡 Buy Dip Alert", "🟡 BUY DIP: Score >= threshold, consider accumulating!")
-alertcondition(is_euphoria_sell, "🔥 Euphoria Sell Alert", "🔥 EUPHORIA SELL: Score <= -6, extreme greed!")
-alertcondition(is_strong_sell, "🔴 Strong Sell Alert", "🔴 STRONG SELL: Score <= -5, consider hedging!")
-alertcondition(is_basis_panic, "🔥 VIX Basis Panic", "🔥 VIX Spot Premium > threshold, high fear detected!")
+if enable_smart_alert
+    // ===== 买入信号聚合 =====
+    has_buy_signal = final_crash_buy or final_strong_buy or final_buy_dip
+    has_buy_signal_prev = (final_crash_buy[1] == true) or (final_strong_buy[1] == true) or (final_buy_dip[1] == true)
+    is_new_buy = has_buy_signal and not has_buy_signal_prev
+    
+    if is_new_buy and (bar_index - last_buy_alert_bar > adaptive_cooldown)
+        // 构建消息头
+        msg = str.format("{0}: 🟢 BUY → ", syminfo.ticker)
+        
+        // 添加触发的信号标签
+        if final_crash_buy
+            msg := msg + "🚨CRASH "
+        if final_strong_buy
+            msg := msg + "🟢STRONG "
+        if final_buy_dip
+            msg := msg + "🟡DIP "
+        
+        // 添加上下文：Score, Z, VIX Regime, 指数趋势
+        msg := msg + str.format("| Score:{0} Z:{1,number,#.##} VIX:{2,number,#.#}({3}) {4}", 
+            score, z, vix, vix_regime_txt, trend_status_txt)
+        
+        alert(msg, alert.freq_once_per_bar)
+        last_buy_alert_bar := bar_index
+    
+    // ===== 卖出信号聚合 =====
+    has_sell_signal = is_euphoria_sell or is_strong_sell or is_sell_hedge
+    has_sell_signal_prev = (is_euphoria_sell[1] == true) or (is_strong_sell[1] == true) or (is_sell_hedge[1] == true)
+    is_new_sell = has_sell_signal and not has_sell_signal_prev
+    
+    if is_new_sell and (bar_index - last_sell_alert_bar > adaptive_cooldown)
+        msg = str.format("{0}: 🔴 SELL → ", syminfo.ticker)
+        
+        if is_euphoria_sell
+            msg := msg + "🔥EUPHORIA "
+        if is_strong_sell
+            msg := msg + "🔴STRONG "
+        if is_sell_hedge
+            msg := msg + "🟠HEDGE "
+        
+        // 添加上下文：Score, Z, SKEW, 指数趋势
+        msg := msg + str.format("| Score:{0} Z:{1,number,#.##} SKEW:{2,number,#} {3}", 
+            score, z, skew, trend_status_txt)
+        
+        alert(msg, alert.freq_once_per_bar)
+        last_sell_alert_bar := bar_index
