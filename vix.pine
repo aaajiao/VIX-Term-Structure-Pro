@@ -96,7 +96,7 @@ kama_length = input.int(21, "└─ KAMA Length", minval=5, maxval=50, group=grp
 // 🎯 信号确认 (Signal Confirmation)
 // ────────────────────────────────────────────────────────────────────────────
 grp_confirm = "🎯 Signal Confirmation"
-use_confirmed_signals = input.bool(true, "🔒 Confirmed Signals Only", group=grp_confirm, tooltip="ON: K线收盘确认 Confirm on bar close (推荐 recommended)\nOFF: 实时信号 Real-time (可能频闪 may flicker)")
+use_confirmed_signals = input.bool(false, "🔒 Confirmed Signals Only", group=grp_confirm, tooltip="ON: K线收盘确认 Confirm on bar close (稳定 stable)\nOFF: 实时信号 Real-time (盘中报警 intraday alerts)")
 use_momentum_confirm = input.bool(true, "Use Momentum Confirmation", group=grp_confirm, tooltip="启用动量确认 Enable momentum confirmation\n需要Z-Score有方向性变化 Require Z-Score direction")
 momentum_bars = input.int(3, "Momentum Lookback Bars", minval=1, maxval=10, group=grp_confirm, tooltip="动量计算周期 Momentum lookback period")
 z_momentum_neutral_zone = input.float(0.05, "Z Momentum Neutral Zone", minval=0.01, maxval=0.2, step=0.01, group=grp_confirm, tooltip="Z动量中性区 Z momentum neutral zone\n过滤噪音 Filter noise")
@@ -135,6 +135,8 @@ strong_return_bars = input.int(20, "🟢 STRONG Return Period (Bars)", minval=10
 dip_return_bars = input.int(10, "🟡 DIP Return Period (Bars)", minval=5, maxval=20, group=grp_stats, tooltip="DIP信号收益周期 DIP return period\n约2周 ~2 weeks")
 enable_smart_alert = input.bool(true, "🔔 Smart Alert", group=grp_stats, tooltip="启用智能警报 Enable Smart Alert\n单条消息汇总所有信号 Aggregated signal message")
 alert_cooldown_base = input.int(5, "Alert Cooldown Base (Bars)", minval=1, maxval=20, group=grp_stats, tooltip="基础冷却间隔 Base cooldown\n高波动期减半 Halved in high vol")
+alert_freq_mode = input.string("Real-time", "└─ Alert Frequency", options=["Once Per Bar", "Real-time"], group=grp_stats, tooltip="Once Per Bar: 每K线最多一次 Max once per bar\nReal-time: 实时触发 Trigger on every condition")
+alert_freq = alert_freq_mode == "Real-time" ? alert.freq_all : alert.freq_once_per_bar
 
 // ────────────────────────────────────────────────────────────────────────────
 // ⚙️ 高级设置 (Advanced Settings)
@@ -744,7 +746,7 @@ if enable_smart_alert
         msg := msg + str.format("| Score:{0} Z:{1,number,#.##} VIX:{2,number,#.#}({3}) {4}", 
             score, z, vix, vix_regime_txt, trend_status_txt)
         
-        alert(msg, alert.freq_once_per_bar)
+        alert(msg, alert_freq)
         last_buy_alert_bar := bar_index
     
     // ===== 卖出信号聚合 =====
@@ -766,5 +768,5 @@ if enable_smart_alert
         msg := msg + str.format("| Score:{0} Z:{1,number,#.##} SKEW:{2,number,#} {3}", 
             score, z, skew, trend_status_txt)
         
-        alert(msg, alert.freq_once_per_bar)
+        alert(msg, alert_freq)
         last_sell_alert_bar := bar_index
