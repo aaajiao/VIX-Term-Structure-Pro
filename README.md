@@ -1,4 +1,4 @@
-# VIX Term Structure Pro v7.3 Enhanced
+# VIX Term Structure Pro v7.4
 
 [![TradingView](https://img.shields.io/badge/TradingView-Indicator-blue?logo=tradingview)](https://www.tradingview.com/)
 [![Pine Script](https://img.shields.io/badge/Pine%20Script-v6-brightgreen)](https://www.tradingview.com/pine-script-docs/en/v6/)
@@ -385,24 +385,36 @@ Max Profit Row:   🚨+X.X% 🟢+X.X% 🟡+X.X%
 
 ## 🔔 Alerts | 警报
 
-### Built-in Alert Conditions | 内置警报条件
+### Smart Alert System (v7.3) | 智能警报系统
 
-| Alert | Trigger | English | 中文 |
-|-------|---------|---------|------|
-| 🚨 Crash Buy | Score ≥ 6 | Includes Score, Z-Score, VIX Basis | 包含评分、Z分数、VIX基差 |
-| 🟢 Strong Buy | Score ≥ 5 | Includes Score, Z-Score, Contango | 包含评分、Z分数、升水 |
-| 🟡 Buy Dip | Score ≥ threshold | Includes Score, Z-Score, VIX Basis | 包含评分、Z分数、VIX基差 |
-| 🔥 Euphoria Sell | Score ≤ -6 | Includes Score, Z-Score, SKEW | 包含评分、Z分数、SKEW |
-| 🔴 Strong Sell | Score ≤ -5 | Includes Score, Z-Score | 包含评分、Z分数 |
-| 🔥 VIX Basis Panic | Basis spike | VIX spot premium spike detected | VIX 现货溢价激增 |
+**English:**
+The unified Smart Alert system aggregates all buy/sell signals into comprehensive messages with rising edge detection to prevent duplicate notifications.
 
-### Alert Cooldown | 警报冷却
+**中文：**
+统一智能警报系统将所有买卖信号聚合为综合消息，采用上升沿检测防止重复通知。
 
-| Setting | English | 中文 |
-|---------|---------|------|
-| Default | 5 bars between alerts | 警报间隔 5 根 K 线 |
-| Purpose | Prevents spam from overlapping signals | 防止重叠信号刷屏 |
-| Range | 1-20 bars configurable | 可配置 1-20 根 K 线 |
+### Alert Message Format | 警报消息格式
+
+| Signal Type | Format | Example | 示例 |
+|-------------|--------|---------|------|
+| � Buy Signals | `{Ticker}: 🟢 BUY → [Signal Tags] \| Context` | `SPY: 🟢 BUY → 🚨CRASH 🟢STRONG \| Score:6 Z:-2.5 VIX:35(HIGH VOL) 🔴SPX 🟢NDX 🟢RUT` | 包含评分、Z分数、VIX状态、三指数趋势 |
+| � Sell Signals | `{Ticker}: 🔴 SELL → [Signal Tags] \| Context` | `QQQ: � SELL → 🔥EUPHORIA 🟠HEDGE \| Score:-6 Z:2.8 SKEW:148 🟢SPX 🟢NDX 🟢RUT` | 包含评分、Z分数、SKEW、三指数趋势 |
+
+### VIX Regime Adaptive Cooldown | VIX 区间自适应冷却
+
+| VIX Regime | Cooldown Multiplier | English | 中文 |
+|------------|---------------------|---------|------|
+| HIGH VOL (>25) | 0.5x (halved) | Faster alerts during volatility | 高波动期警报更频繁 |
+| NORMAL (15-25) | 1.0x (base) | Standard cooldown period | 标准冷却间隔 |
+| LOW VOL (<15) | 2.0x (doubled) | Reduced noise in calm markets | 低波动期减少干扰 |
+
+### Alert Configuration | 警报配置
+
+| Setting | Default | English | 中文 |
+|---------|---------|---------|------|
+| 🔔 Smart Alert | ON | Enable unified alert system | 启用统一智能警报 |
+| Alert Cooldown Base | 5 bars | Base cooldown (adjusted by VIX Regime) | 基础冷却间隔（根据VIX区间调整） |
+| Alert Frequency | Real-time | Real-time or Once Per Bar | 实时模式或每K线一次 |
 
 ---
 
@@ -445,7 +457,19 @@ Total Score =
 
 ## 📋 Changelog | 更新日志
 
-### v7.3 Enhanced (Current | 当前版本)
+### v7.4 (2025-12-17 | Current | 当前版本)
+
+**🔔 Smart Alert System | 智能警报系统**
+- **Unified Smart Alert**: Replaced multiple alert conditions with a single aggregated alert system
+  统一智能警报：用单一聚合警报系统替代多个警报条件
+- **Rising Edge Detection**: Prevents duplicate notifications within cooldown period
+  上升沿检测：在冷却期内防止重复通知
+- **VIX Regime Adaptive Cooldown**: HIGH VOL (0.5x) / NORMAL (1x) / LOW VOL (2x) cooldown multipliers
+  VIX 区间自适应冷却：高波动 0.5x / 正常 1x / 低波动 2x 冷却倍数
+- **Context-Rich Messages**: Include Score, Z-Score, VIX Regime, and triple index trend status
+  富上下文消息：包含评分、Z分数、VIX区间和三指数趋势状态
+
+### v7.3 Enhanced
 - 🎯 **Enhanced Signal Filtering | 增强信号过滤**: BUY DIP and SELL/HEDGE with VIX Regime + Momentum dual filter
   - 🟡 BUY DIP: Disabled in HIGH VOL, requires Z Momentum falling | 高波动期不触发，需 Z 动量下降
   - 🟠 SELL/HEDGE: Disabled in LOW VOL, requires Z Momentum rising | 低波动期不触发，需 Z 动量上升
