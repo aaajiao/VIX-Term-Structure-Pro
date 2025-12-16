@@ -13,6 +13,13 @@ indicator("VIX Term Structure Pro [v7.3 Enhanced]", overlay=false, max_lines_cou
 // ║ Market Trend   │ 🟢SPX 🟢NDX 🟢RUT       │ 🔴SPX 🔴NDX 🔴RUT               ║
 // ║ VIX Regime     │ LOW VOL (<15)           │ HIGH VOL (>25)                 ║
 // ║ Term Struct Z  │ < -2.0 (恐慌)           │ > 2.0 (贪婪)                    ║
+// ║----------------------------------------------------------------------------║
+// ║ 💡 状态提示说明 (Status)                                                    ║
+// ║----------------------------------------------------------------------------║
+// ║ WAIT (等待)    │ 🟡 买入侧。评分达标但被过滤（如高波动或动量未确认）。        ║
+// ║                │ 含义：不要急于进场，等待更好的时机。                        ║
+// ║ HOLD (持有)    │ 🟠 卖出侧。评分达标但被过滤（如低波动或动量未确认）。        ║
+// ║                │ 含义：不要急于卖出/对冲，继续持有仓位。                      ║
 // ╠════════════════════════════════════════════════════════════════════════════╣
 // ║ 📌 v7.3 新增功能                                                            ║
 // ║----------------------------------------------------------------------------║
@@ -497,9 +504,18 @@ else if score >= 5
     signal_col := color.green
     signal_emoji := "🟢"
 else if score >= min_score_buy
-    signal_txt := "BUY DIP"
-    signal_col := color.lime
-    signal_emoji := "🟡"
+    if vix_regime == 3
+        signal_txt := "WAIT (High Vol)"
+        signal_col := color.gray
+        signal_emoji := "✋"
+    else if use_momentum_confirm and not is_buy_dip_momentum_ok
+        signal_txt := "WAIT (Momentum)"
+        signal_col := color.gray
+        signal_emoji := "✋"
+    else
+        signal_txt := "BUY DIP"
+        signal_col := color.lime
+        signal_emoji := "🟡"
 else if score <= -6
     signal_txt := "🔥 EUPHORIA SELL"
     signal_col := color.new(#FF0000, 0)
@@ -509,9 +525,18 @@ else if score <= -5
     signal_col := color.red
     signal_emoji := "🔴"
 else if score <= -2
-    signal_txt := "SELL/HEDGE"
-    signal_col := color.orange
-    signal_emoji := "🟠"
+    if vix_regime == 1
+        signal_txt := "HOLD (Low Vol)"
+        signal_col := color.gray
+        signal_emoji := "☕"
+    else if use_momentum_confirm and not is_sell_hedge_momentum_ok
+        signal_txt := "HOLD (Momentum)"
+        signal_col := color.gray
+        signal_emoji := "✋"
+    else
+        signal_txt := "SELL/HEDGE"
+        signal_col := color.orange
+        signal_emoji := "🟠"
 else
     signal_txt := "WAIT / HOLD"
     signal_col := color.gray

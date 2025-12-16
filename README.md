@@ -74,6 +74,14 @@ VIX Term Structure Pro 是一款高级多因子市场择时指标，结合 VIX �
 | 6 | Vol Status | Smart volume spike detection | 智能成交量状态 |
 | 7 | Z Momentum | Directional momentum indicator | Z 动量方向 |
 | 8 | Signal Stats | Historical signal count | 历史信号统计 |
+|   | **Status Info** | **Signal Filtering Feedback** | **信号过滤反馈** |
+
+#### 💡 Status Explanations | 状态说明
+
+| Status | English | 中文 | Meaning | 含义 |
+|--------|---------|------|---------|------|
+| **WAIT** | Wait (Buy Side) | 等待 (买入侧) | Score is high, but filtered (High Vol or Momentum). Wait for entry. | 评分达标但被过滤（如高波动或动量未确认）。不要急于进场。 |
+| **HOLD** | Hold (Sell Side) | 持有 (卖出侧) | Score is low, but filtered (Low Vol or Momentum). Hold position. | 评分达标但被过滤（如低波动或动量未确认）。不要急于卖出，继续持有。 |
 
 #### Full Mode | 完整模式 (12-17 rows)
 
@@ -442,6 +450,7 @@ Total Score =
   - 🟡 BUY DIP: Disabled in HIGH VOL, requires Z Momentum falling | 高波动期不触发，需 Z 动量下降
   - 🟠 SELL/HEDGE: Disabled in LOW VOL, requires Z Momentum rising | 低波动期不触发，需 Z 动量上升
 - ⏱️ **Signal Cooldown | 信号冷却**: Signal Display Cooldown setting prevents frequent same-type signals | 信号冷却设置避免同类信号频繁显示
+- 💡 **Dashboard Status Info | 仪表盘状态提示**: Explicit `WAIT` (for Buy side) and `HOLD` (for Sell side) status when signals are filtered | 信号被过滤时明确显示 WAIT/HOLD 状态
 - 🔧 **KAMA Implementation | KAMA 实现**: Custom `calc_kama()` function for cross-environment compatibility | 自定义 KAMA 函数确保跨环境兼容
 
 ### v7.2 Enhanced
