@@ -888,8 +888,8 @@ if show_table and barstate.islast
             table.cell(panel, 0, char_base_row + 4, "Vol Cluster", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
             table.cell(panel, 1, char_base_row + 4, cluster_txt, bgcolor=bg_cell, text_color=vol_state_color, text_size=t_size)
 
-    // 重绘警告行 (v7.1 新增) - Live Mode 显示警告
-    if not backtest_mode
+    // 重绘警告行 (v7.1 新增) - Live Mode 显示警告 (仅 Compact/Full 模式)
+    if not backtest_mode and not is_mobile
         warning_row_idx = panel_rows - 1
         table.cell(panel, 0, warning_row_idx, "⚠️ Live Mode", bgcolor=color.new(color.orange, 85), text_color=color.orange, text_size=size.tiny, text_halign=text.align_left)
         table.cell(panel, 1, warning_row_idx, "Historical Repaints", bgcolor=color.new(color.orange, 85), text_color=color.orange, text_size=size.tiny)
