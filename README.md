@@ -1,4 +1,4 @@
-# VIX Term Structure Pro v7.4
+# VIX Term Structure Pro v7.6
 
 [![TradingView](https://img.shields.io/badge/TradingView-Indicator-blue?logo=tradingview)](https://www.tradingview.com/scripts/)
 [![Pine Script](https://img.shields.io/badge/Pine%20Script-v6-brightgreen)](https://www.tradingview.com/pine-script-reference/v6/)
@@ -34,6 +34,16 @@ VIX Term Structure Pro 是一款高级多因子市场择时指标，结合 VIX �
 | **Smart Volume** | Normalized visualization with spike detection | 智能成交量，归一化可视化与激增检测 |
 | **VVIX** | Volatility of volatility (optional) | 波动率的波动率（可选） |
 
+### 🔬 VIX Characteristics Analysis | VIX 特性分析 (v7.5+)
+
+| Feature | English | 中文 |
+|---------|---------|------|
+| **Mean Reversion** | Tracks σ distance from long-term mean (~19-20) | 追踪 VIX 与长期均值的距离 |
+| **Backwardation Duration** | Days in backwardation (5-7 days = optimal entry) | Backwardation 持续天数 |
+| **Asymmetric Momentum** | Detects panic spikes vs slow decay | 非对称动量（涨快跌慢） |
+| **VIX-SPX Divergence** | Bullish/Bearish divergence signals | VIX-SPX 背离信号 |
+| **Volatility Clustering** | State: CRISIS/ELEVATED/NORMAL/DECLINING/SUPPRESSED | 波动聚集状态 |
+
 ### 🎯 Three-Tier Signal System | 三级信号系统
 
 | Signal | Score | English | 中文 | Return Period |
@@ -61,6 +71,24 @@ VIX Term Structure Pro 是一款高级多因子市场择时指标，结合 VIX �
 | Optional Toggle | Enable/disable based on trading style | 可选开关，基于交易风格启用/禁用 |
 
 ### 📈 Dashboard Indicators | 仪表盘指标
+
+#### Mobile Mode | 移动模式 (3 rows) - v7.6
+
+| Row | Content | Example | 中文说明 |
+|-----|---------|---------|----------|
+| 0 | Overall Bias + Score | 🟢 STRONG BUY +5 | 信号 + 评分 |
+| 1 | Status | ✅ Z:-2.30 | 状态 (无过滤时显示Z分数) |
+| 2 | VIX Regime + Value | 🟡 VIX:18 NORMAL | VIX区间 + 数值 |
+
+**被过滤时 Row 1 显示 | When Filtered (Row 1):**
+| Status | Example | 中文说明 |
+|--------|---------|----------|
+| 高波动过滤 | ✋ WAIT: High Vol | 等待 (高波动) |
+| 动量未确认 | ✋ WAIT: Momentum | 等待 (动量) |
+| 低波动过滤 | ☕ HOLD: Low Vol | 持有 (低波动) |
+| 趋势过滤 | 🚫 NO TRADE: Trend | 不交易 (趋势) |
+
+> 📱 **Compact 3-row display for mobile** / 紧凑3行移动端显示
 
 #### Compact Mode | 精简模式 (8 rows)
 
@@ -159,7 +187,7 @@ Includes all Compact mode data plus: / 包含精简模式全部数据，另加�
 
 | Setting | Options | English | 中文 |
 |---------|---------|---------|------|
-| Dashboard Mode | Compact / Full | Essential or all indicators | 精简或完整指标 |
+| Dashboard Mode | Mobile / Compact / Full | Minimal 2-row / Essential / All indicators | 极简两行 / 精简 / 完整指标 |
 | Dashboard Position | 6 positions | Top/Bottom + Left/Right/Center | 6 种位置选项 (v7.1) |
 | Text Size | Small / Normal / Large | Dashboard text size | 文字大小 |
 | Transparency | 0-100% | Background transparency | 背景透明度 |
@@ -457,7 +485,34 @@ Total Score =
 
 ## 📋 Changelog | 更新日志
 
-### v7.4 (2025-12-17 | Current | 当前版本)
+### v7.6 (2025-12-26 | Current | 当前版本)
+
+**📱 Mobile Mode | 移动模式**
+- **3-Row Compact Display**: 紧凑3行显示，信息分层清晰
+  - Row 0: `🟢 STRONG BUY +5` (Overall Bias + Score)
+  - Row 1: `✅ Z:-2.30` 或 `✋ WAIT: High Vol` (Status)
+  - Row 2: `🟡 VIX:18 NORMAL` (VIX Regime + Value)
+- **Signal/Status Separation**: 信号与状态分离显示
+  - Overall Bias 始终显示原始信号建议
+  - Status 显示过滤状态或Z分数确认
+
+### v7.5 (2025-12-25)
+
+**🔬 VIX Characteristics Analysis | VIX 特性分析**
+- **Mean Reversion Detection | 均值回归检测**: Tracks VIX distance from long-term mean (σ)
+  追踪 VIX 与长期均值的 σ 距离，识别极端偏离
+- **Backwardation Duration | Backwardation 持续天数**: Counts consecutive days in backwardation
+  统计连续 Backwardation 天数，5-7天后通常是较好买点
+- **Asymmetric Momentum | 非对称动量**: Detects VIX panic spikes and subsiding patterns
+  检测 VIX 恐慌激增和消退模式（上涨快下跌慢）
+- **VIX-SPX Divergence | VIX-SPX 背离**: Identifies bullish/bearish divergence signals
+  识别 SPX 下跌但 VIX 不涨（看涨背离）或相反（看跌背离）
+- **Volatility Clustering | 波动聚集**: State machine for CRISIS/ELEVATED/NORMAL/DECLINING/SUPPRESSED
+  状态机识别当前波动率周期阶段
+- **Separate Display Toggle | 独立显示开关**: Enable calculation vs display independently
+  计算与显示可独立开关
+
+### v7.4 (2025-12-17)
 
 **🔔 Smart Alert System | 智能警报系统**
 - **Unified Smart Alert**: Replaced multiple alert conditions with a single aggregated alert system
