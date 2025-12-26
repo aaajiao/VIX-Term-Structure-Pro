@@ -402,12 +402,7 @@ vix_long_stdev = ta.stdev(vix, mean_reversion_lookback)
 vix_mean_distance = vix_long_stdev != 0 ? (vix - vix_long_sma) / vix_long_stdev : 0.0
 
 // 均值回归评分: VIX极高(>2σ)看涨(必然回归), VIX极低(<-1.5σ)看跌
-mean_reversion_score = not use_vix_characteristics or not use_mean_reversion ? 0 :
-    vix_mean_distance > 3.0 ? 3 :
-    vix_mean_distance > 2.0 ? 2 :
-    vix_mean_distance > 1.5 ? 1 :
-    vix_mean_distance < -1.5 ? -2 :
-    vix_mean_distance < -1.0 ? -1 : 0
+mean_reversion_score = not use_vix_characteristics or not use_mean_reversion ? 0 : vix_mean_distance > 3.0 ? 3 : vix_mean_distance > 2.0 ? 2 : vix_mean_distance > 1.5 ? 1 : vix_mean_distance < -1.5 ? -2 : vix_mean_distance < -1.0 ? -1 : 0
 
 // ----- 2. Backwardation 持续天数追踪 -----
 // 前端Backwardation: VIX > VX1
@@ -422,20 +417,11 @@ else
     backwardation_days := 0
 
 // Backwardation评分: 持续5天以上开始加分，10天以上强力加分
-backwardation_duration_score = not use_vix_characteristics or not use_backwardation_duration ? 0 :
-    backwardation_days >= 10 ? 3 :
-    backwardation_days >= backwardation_optimal_days ? 2 :
-    backwardation_days >= 3 ? 1 : 0
+backwardation_duration_score = not use_vix_characteristics or not use_backwardation_duration ? 0 : backwardation_days >= 10 ? 3 : backwardation_days >= backwardation_optimal_days ? 2 : backwardation_days >= 3 ? 1 : 0
 
 // Backwardation状态文本
-backwardation_status = backwardation_days >= 10 ? "EXTREME (" + str.tostring(backwardation_days) + "D)" :
-                       backwardation_days >= backwardation_optimal_days ? "OPTIMAL (" + str.tostring(backwardation_days) + "D)" :
-                       backwardation_days >= 1 ? "EARLY (" + str.tostring(backwardation_days) + "D)" :
-                       "CONTANGO"
-backwardation_color = backwardation_days >= 10 ? color.lime :
-                      backwardation_days >= backwardation_optimal_days ? color.green :
-                      backwardation_days >= 1 ? color.yellow :
-                      color.gray
+backwardation_status = backwardation_days >= 10 ? "EXTREME (" + str.tostring(backwardation_days) + "D)" : backwardation_days >= backwardation_optimal_days ? "OPTIMAL (" + str.tostring(backwardation_days) + "D)" : backwardation_days >= 1 ? "EARLY (" + str.tostring(backwardation_days) + "D)" : "CONTANGO"
+backwardation_color = backwardation_days >= 10 ? color.lime : backwardation_days >= backwardation_optimal_days ? color.green : backwardation_days >= 1 ? color.yellow : color.gray
 
 // ----- 3. 非对称动量（恐慌消退确认）-----
 // VIX单日变化率
@@ -453,25 +439,15 @@ vix_drop_from_peak = vix_recent_high != 0 ? (vix_recent_high - vix) / vix_recent
 is_panic_subsiding = vix_falling_streak and vix_drop_from_peak > panic_subside_threshold
 
 // 非对称动量评分
-asymmetric_momentum_score = not use_vix_characteristics or not use_asymmetric_momentum ? 0 :
-    is_panic_subsiding and vix > vix_high_thresh ? 2 :  // 高位恐慌确认消退，强买入
-    is_panic_subsiding ? 1 :                            // 恐慌消退
-    is_panic_spike_detected and not is_panic_subsiding ? -1 : 0  // 恐慌爆发中，等待
+asymmetric_momentum_score = not use_vix_characteristics or not use_asymmetric_momentum ? 0 : is_panic_subsiding and vix > vix_high_thresh ? 2 : is_panic_subsiding ? 1 : is_panic_spike_detected and not is_panic_subsiding ? -1 : 0
 
 // 恐慌状态文本
-panic_status = is_panic_spike_detected and not is_panic_subsiding ? "🔥 SPIKING" :
-               is_panic_subsiding ? "✅ SUBSIDING" :
-               vix_drop_from_peak > 10 ? "↓ DECLINING" :
-               "→ STABLE"
-panic_status_color = is_panic_spike_detected and not is_panic_subsiding ? color.red :
-                     is_panic_subsiding ? color.lime :
-                     color.gray
+panic_status = is_panic_spike_detected and not is_panic_subsiding ? "🔥 SPIKING" : is_panic_subsiding ? "✅ SUBSIDING" : vix_drop_from_peak > 10 ? "↓ DECLINING" : "→ STABLE"
+panic_status_color = is_panic_spike_detected and not is_panic_subsiding ? color.red : is_panic_subsiding ? color.lime : color.gray
 
 // ----- 4. VIX-SPX 背离检测 -----
-spx_return_div = not na(spx_close) and not na(spx_close[divergence_lookback]) and spx_close[divergence_lookback] != 0 ?
-                 (spx_close - spx_close[divergence_lookback]) / spx_close[divergence_lookback] * 100 : 0.0
-vix_return_div = not na(vix) and not na(vix[divergence_lookback]) and vix[divergence_lookback] != 0 ?
-                 (vix - vix[divergence_lookback]) / vix[divergence_lookback] * 100 : 0.0
+spx_return_div = not na(spx_close) and not na(spx_close[divergence_lookback]) and spx_close[divergence_lookback] != 0 ? (spx_close - spx_close[divergence_lookback]) / spx_close[divergence_lookback] * 100 : 0.0
+vix_return_div = not na(vix) and not na(vix[divergence_lookback]) and vix[divergence_lookback] != 0 ? (vix - vix[divergence_lookback]) / vix[divergence_lookback] * 100 : 0.0
 
 // 看涨背离: SPX下跌但VIX也下跌（恐慌消退信号）
 is_bullish_divergence = spx_return_div < -2 and vix_return_div < 0
@@ -483,20 +459,11 @@ vix_convexity = spx_return_div < -0.5 ? math.abs(vix_return_div / spx_return_div
 is_excessive_convexity = vix_convexity > 8
 
 // 背离评分
-divergence_score = not use_vix_characteristics or not use_divergence ? 0 :
-    is_bullish_divergence ? 2 :                      // 看涨背离
-    is_excessive_convexity and vix > 25 ? 1 :        // VIX反应过度，可能见顶
-    is_bearish_divergence ? -2 : 0                   // 看跌背离
+divergence_score = not use_vix_characteristics or not use_divergence ? 0 : is_bullish_divergence ? 2 : is_excessive_convexity and vix > 25 ? 1 : is_bearish_divergence ? -2 : 0
 
 // 背离状态文本
-divergence_status = is_bullish_divergence ? "🟢 BULLISH" :
-                    is_bearish_divergence ? "🔴 BEARISH" :
-                    is_excessive_convexity ? "⚡ OVERREACT" :
-                    "→ NORMAL"
-divergence_status_color = is_bullish_divergence ? color.lime :
-                          is_bearish_divergence ? color.red :
-                          is_excessive_convexity ? color.yellow :
-                          color.gray
+divergence_status = is_bullish_divergence ? "🟢 BULLISH" : is_bearish_divergence ? "🔴 BEARISH" : is_excessive_convexity ? "⚡ OVERREACT" : "→ NORMAL"
+divergence_status_color = is_bullish_divergence ? color.lime : is_bearish_divergence ? color.red : is_excessive_convexity ? color.yellow : color.gray
 
 // ----- 5. 波动聚集状态机 -----
 // VIX的波动率（VIX of VIX概念）
@@ -510,22 +477,11 @@ vol_cluster_ratio = vix_vol_long_calc != 0 ? vix_vol_short_calc / vix_vol_long_c
 // NORMAL(3): 正常 (0.8-1.5x)
 // DECLINING(2): 波动收敛 (0.5-0.8x) - 好的买入窗口
 // SUPPRESSED(1): 极度平静 (<0.5x) - 警惕突变
-vol_state_id = vol_cluster_ratio > 2.0 ? 5 :
-               vol_cluster_ratio > 1.5 ? 4 :
-               vol_cluster_ratio > 0.8 ? 3 :
-               vol_cluster_ratio > 0.5 ? 2 : 1
+vol_state_id = vol_cluster_ratio > 2.0 ? 5 : vol_cluster_ratio > 1.5 ? 4 : vol_cluster_ratio > 0.8 ? 3 : vol_cluster_ratio > 0.5 ? 2 : 1
 
-vol_state_txt = vol_state_id == 5 ? "CRISIS" :
-                vol_state_id == 4 ? "ELEVATED" :
-                vol_state_id == 3 ? "NORMAL" :
-                vol_state_id == 2 ? "DECLINING" :
-                "SUPPRESSED"
+vol_state_txt = vol_state_id == 5 ? "CRISIS" : vol_state_id == 4 ? "ELEVATED" : vol_state_id == 3 ? "NORMAL" : vol_state_id == 2 ? "DECLINING" : "SUPPRESSED"
 
-vol_state_color = vol_state_id == 5 ? color.red :
-                  vol_state_id == 4 ? color.orange :
-                  vol_state_id == 3 ? color.gray :
-                  vol_state_id == 2 ? color.lime :
-                  color.yellow
+vol_state_color = vol_state_id == 5 ? color.red : vol_state_id == 4 ? color.orange : vol_state_id == 3 ? color.gray : vol_state_id == 2 ? color.lime : color.yellow
 
 // 极度平静天数追踪（用于预警）
 var int suppressed_days = 0
@@ -535,37 +491,16 @@ else
     suppressed_days := 0
 
 // 波动聚集评分
-vol_clustering_score = not use_vix_characteristics or not use_vol_clustering ? 0 :
-    vol_state_id == 2 and vix > 20 ? 2 :  // 波动收敛+VIX仍高 = 好买点
-    vol_state_id == 2 ? 1 :                // 波动收敛
-    vol_state_id == 1 and suppressed_days > 30 ? -2 :  // 长期压抑，警惕爆发
-    vol_state_id == 5 ? 1 : 0              // 危机中，均值回归机会
+vol_clustering_score = not use_vix_characteristics or not use_vol_clustering ? 0 : vol_state_id == 2 and vix > 20 ? 2 : vol_state_id == 2 ? 1 : vol_state_id == 1 and suppressed_days > 30 ? -2 : vol_state_id == 5 ? 1 : 0
 
 // ----- VIX特性综合评分 -----
-vix_characteristics_total = mean_reversion_score +
-                            backwardation_duration_score +
-                            asymmetric_momentum_score +
-                            divergence_score +
-                            vol_clustering_score
+vix_characteristics_total = mean_reversion_score + backwardation_duration_score + asymmetric_momentum_score + divergence_score + vol_clustering_score
 
 // ========== 4. AI 信号算法 (Enhanced v7.0 - 模块化) ==========
 var float score = 0.0
 
-// 使用模块化评分函数
-score := calc_z_score_points(z, thresh_mid, thresh_strong) +
-         calc_contango_points(contango_pct) +
-         calc_basis_points(is_basis_panic, is_basis_calm) +
-         calc_skew_points(is_skew_high, is_skew_low) +
-         calc_pcr_points(pcr) +
-         calc_vvix_points(vvix, use_vvix) +
-         (is_vol_spike and z < -thresh_mid ? 1 : 0) +
-         (use_momentum_confirm and z < -thresh_mid and z_momentum_bullish ? 1 : 0) +
-         (use_momentum_confirm and z > thresh_mid and z_momentum_bearish ? -1 : 0) +
-         (use_mtf_confirm and z < -thresh_mid and is_weekly_buy_aligned ? 1 : 0) +
-         (use_mtf_confirm and z > thresh_mid and is_weekly_sell_aligned ? -1 : 0) +
-         (use_trend_filter and not is_bull_market ? -2 : 0) +
-         // ===== v7.5 新增：VIX特性评分 =====
-         (use_vix_characteristics ? vix_characteristics_total : 0)
+// 使用模块化评分函数 (v7.5: 包含VIX特性评分)
+score := calc_z_score_points(z, thresh_mid, thresh_strong) + calc_contango_points(contango_pct) + calc_basis_points(is_basis_panic, is_basis_calm) + calc_skew_points(is_skew_high, is_skew_low) + calc_pcr_points(pcr) + calc_vvix_points(vvix, use_vvix) + (is_vol_spike and z < -thresh_mid ? 1 : 0) + (use_momentum_confirm and z < -thresh_mid and z_momentum_bullish ? 1 : 0) + (use_momentum_confirm and z > thresh_mid and z_momentum_bearish ? -1 : 0) + (use_mtf_confirm and z < -thresh_mid and is_weekly_buy_aligned ? 1 : 0) + (use_mtf_confirm and z > thresh_mid and is_weekly_sell_aligned ? -1 : 0) + (use_trend_filter and not is_bull_market ? -2 : 0) + (use_vix_characteristics ? vix_characteristics_total : 0)
 
 // ========== 5. 三级买入信号 (v7.0 新增, v7.3 优化) ==========
 // 基于 Score 评级的信号触发（首次进入该评级时触发）
@@ -852,11 +787,8 @@ if show_table and barstate.islast
 
     // Row 9: VIX Characteristics (v7.5 新增 - Compact模式汇总)
     if show_vix_characteristics and is_compact
-        char_summary = str.tostring(vix_characteristics_total, "+#;-#;0") +
-                       " BD:" + str.tostring(backwardation_days) + "D" +
-                       " " + (is_bullish_divergence ? "🟢" : is_bearish_divergence ? "🔴" : "→")
-        char_color = vix_characteristics_total >= 3 ? color.lime :
-                     vix_characteristics_total <= -2 ? color.red : color.silver
+        char_summary = str.tostring(vix_characteristics_total, "+#;-#;0") + " BD:" + str.tostring(backwardation_days) + "D " + (is_bullish_divergence ? "🟢" : is_bearish_divergence ? "🔴" : "→")
+        char_color = vix_characteristics_total >= 3 ? color.lime : vix_characteristics_total <= -2 ? color.red : color.silver
         table.cell(panel, 0, 9, "VIX Chars", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
         table.cell(panel, 1, 9, char_summary, bgcolor=bg_cell, text_color=char_color, text_size=t_size)
 
