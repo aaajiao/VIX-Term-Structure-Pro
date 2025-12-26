@@ -952,8 +952,7 @@ if show_table and barstate.islast
 
 // ========== 10. SMART ALERT (Unified Alert System v2) ==========
 // 方案C: 完整信息警报 - 显示 Overall Bias + Status + VIX
-// 可执行信号: SPY: 🟢 STRONG BUY +5 | ✅ OK | 🟡 VIX:18
-// 被过滤信号: SPY: 🟡 BUY DIP +4 | ✋ WAIT: High Vol | 🔴 VIX:32
+// 支持: 首次进入 / 信号升级 / 信号降级
 
 var int last_buy_alert_bar = 0
 var int last_sell_alert_bar = 0
@@ -965,17 +964,29 @@ adaptive_cooldown = vix_regime == 3 ? math.round(alert_cooldown_base / 2) : vix_
 alert_vix_emoji = vix_regime == 3 ? "🔴" : vix_regime == 1 ? "🟢" : "🟡"
 alert_vix_short = vix_regime == 3 ? "HIGH" : vix_regime == 1 ? "LOW" : "NORMAL"
 
-if enable_smart_alert
-    // ===== 买入信号检测 (包含被过滤的信号) =====
-    // 原始信号：score >= min_score_buy (未过滤前)
-    has_raw_buy_signal = score >= min_score_buy
-    has_raw_buy_signal_prev = score[1] >= min_score_buy
-    is_new_raw_buy = has_raw_buy_signal and not has_raw_buy_signal_prev
+// 信号级别计算 (用于检测升级/降级)
+// Buy: 0=NEUTRAL, 1=BUY DIP, 2=STRONG BUY, 3=CRASH BUY
+// Sell: 0=NEUTRAL, 1=SELL/HEDGE, 2=STRONG SELL, 3=EUPHORIA
+buy_signal_level = score >= 6 ? 3 : score >= 5 ? 2 : score >= min_score_buy ? 1 : 0
+sell_signal_level = score <= -6 ? 3 : score <= -5 ? 2 : score <= -2 ? 1 : 0
+buy_signal_level_prev = score[1] >= 6 ? 3 : score[1] >= 5 ? 2 : score[1] >= min_score_buy ? 1 : 0
+sell_signal_level_prev = score[1] <= -6 ? 3 : score[1] <= -5 ? 2 : score[1] <= -2 ? 1 : 0
 
-    if is_new_raw_buy and (bar_index - last_buy_alert_bar > adaptive_cooldown)
+if enable_smart_alert
+    // ===== 买入信号检测 =====
+    // 触发条件: 首次进入 OR 信号升级 OR 信号降级 (但仍在买入区间)
+    buy_level_changed = buy_signal_level != buy_signal_level_prev and buy_signal_level > 0
+    is_buy_upgrade = buy_signal_level > buy_signal_level_prev and buy_signal_level_prev > 0
+    is_buy_downgrade = buy_signal_level < buy_signal_level_prev and buy_signal_level > 0
+    is_new_buy_entry = buy_signal_level > 0 and buy_signal_level_prev == 0
+
+    if (is_new_buy_entry or is_buy_upgrade or is_buy_downgrade) and (bar_index - last_buy_alert_bar > adaptive_cooldown)
+        // 信号变化类型标识
+        change_type = is_buy_upgrade ? "⬆️ " : is_buy_downgrade ? "⬇️ " : ""
+
         // 构建消息：Overall Bias + Status + VIX
-        msg = str.format("{0}: {1} {2} {3} | ",
-            syminfo.ticker, mobile_bias_emoji, mobile_bias_txt, format_signed_int(math.round(score)))
+        msg = str.format("{0}: {1}{2} {3} {4} | ",
+            syminfo.ticker, change_type, mobile_bias_emoji, mobile_bias_txt, format_signed_int(math.round(score)))
 
         // Status 部分
         if is_filtered
@@ -989,16 +1000,20 @@ if enable_smart_alert
         alert(msg, alert_freq)
         last_buy_alert_bar := bar_index
 
-    // ===== 卖出信号检测 (包含被过滤的信号) =====
-    // 原始信号：score <= -2 (未过滤前)
-    has_raw_sell_signal = score <= -2
-    has_raw_sell_signal_prev = score[1] <= -2
-    is_new_raw_sell = has_raw_sell_signal and not has_raw_sell_signal_prev
+    // ===== 卖出信号检测 =====
+    // 触发条件: 首次进入 OR 信号升级 OR 信号降级 (但仍在卖出区间)
+    sell_level_changed = sell_signal_level != sell_signal_level_prev and sell_signal_level > 0
+    is_sell_upgrade = sell_signal_level > sell_signal_level_prev and sell_signal_level_prev > 0
+    is_sell_downgrade = sell_signal_level < sell_signal_level_prev and sell_signal_level > 0
+    is_new_sell_entry = sell_signal_level > 0 and sell_signal_level_prev == 0
 
-    if is_new_raw_sell and (bar_index - last_sell_alert_bar > adaptive_cooldown)
+    if (is_new_sell_entry or is_sell_upgrade or is_sell_downgrade) and (bar_index - last_sell_alert_bar > adaptive_cooldown)
+        // 信号变化类型标识
+        change_type = is_sell_upgrade ? "⬆️ " : is_sell_downgrade ? "⬇️ " : ""
+
         // 构建消息：Overall Bias + Status + VIX
-        msg = str.format("{0}: {1} {2} {3} | ",
-            syminfo.ticker, mobile_bias_emoji, mobile_bias_txt, format_signed_int(math.round(score)))
+        msg = str.format("{0}: {1}{2} {3} {4} | ",
+            syminfo.ticker, change_type, mobile_bias_emoji, mobile_bias_txt, format_signed_int(math.round(score)))
 
         // Status 部分
         if is_filtered

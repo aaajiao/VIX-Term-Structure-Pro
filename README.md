@@ -416,10 +416,19 @@ Max Profit Row:   🚨+X.X% 🟢+X.X% 🟡+X.X%
 ### Smart Alert System v2 (v7.6) | 智能警报系统 v2
 
 **English:**
-The Smart Alert v2 shows Overall Bias + Status + VIX in a unified format, matching the Mobile mode display. Both actionable and filtered signals trigger alerts.
+The Smart Alert v2 shows Overall Bias + Status + VIX in a unified format, matching the Mobile mode display. Alerts trigger on signal entry, upgrades, and downgrades.
 
 **中文：**
-智能警报 v2 以统一格式显示 Overall Bias + Status + VIX，与 Mobile 模式一致。可执行信号和被过滤信号都会触发警报。
+智能警报 v2 以统一格式显示 Overall Bias + Status + VIX，与 Mobile 模式一致。支持首次进入、信号升级、信号降级三种触发场景。
+
+### Alert Trigger Scenarios | 警报触发场景
+
+| Scenario | Example | Alert | 说明 |
+|----------|---------|-------|------|
+| 首次进入 | NEUTRAL → BUY DIP | `SPY: 🟡 BUY DIP +4 \| ...` | 新信号 |
+| ⬆️ 信号升级 | BUY DIP → STRONG BUY | `SPY: ⬆️ 🟢 STRONG BUY +5 \| ...` | 恐慌加剧 |
+| ⬇️ 信号降级 | STRONG BUY → BUY DIP | `SPY: ⬇️ 🟡 BUY DIP +4 \| ...` | 恐慌缓解 |
+| 退出区间 | BUY DIP → NEUTRAL | *(无警报)* | 信号消失 |
 
 ### Alert Message Format | 警报消息格式
 
@@ -513,6 +522,9 @@ Total Score =
   - `SPY: 🟢 STRONG BUY +5 | ✅ Z:-2.30 | 🟡 VIX:18 NORMAL`
 - **Filtered Signal Alerts**: 被过滤信号也会触发警报
   - `SPY: 🟡 BUY DIP +4 | ✋ WAIT: High Vol | 🔴 VIX:32 HIGH`
+- **Signal Level Change Detection**: 支持信号升级/降级警报
+  - ⬆️ 升级: `SPY: ⬆️ 🟢 STRONG BUY +5 | ...` (恐慌加剧)
+  - ⬇️ 降级: `SPY: ⬇️ 🟡 BUY DIP +4 | ...` (恐慌缓解)
 
 ### v7.5 (2025-12-25)
 
