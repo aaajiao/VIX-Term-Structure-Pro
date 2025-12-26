@@ -791,22 +791,22 @@ if show_table and barstate.islast
 
     mode_display = sens_mode == "High (Scalping)" ? "(High)" : sens_mode == "Normal (Swing)" ? "(Normal)" : "(Trend Guard)"
 
-    // ===== Mobile Mode: 紧凑3行显示 (宽度自适应) =====
+    // ===== Mobile Mode: 紧凑3行显示 (宽度自适应, 左对齐) =====
     if is_mobile
         // Row 0: Overall Bias + Score (例: "🟢 STRONG BUY +5")
         mobile_row0 = mobile_bias_emoji + " " + mobile_bias_txt + " " + format_signed_int(math.round(score))
-        table.cell(panel, 0, 0, mobile_row0, bgcolor=bg_header, text_color=mobile_bias_col, text_size=t_size)
+        table.cell(panel, 0, 0, mobile_row0, bgcolor=bg_header, text_color=mobile_bias_col, text_size=t_size, text_halign=text.align_left)
         table.cell(panel, 1, 0, "", bgcolor=color.new(color.black, 100), text_size=t_size, width=0)
         // Row 1: Status (例: "✅ Z:-2.30" 或 "✋ WAIT: High Vol")
         mobile_row1 = is_filtered ? (mobile_status_emoji + " " + mobile_status_txt) : ("✅ Z:" + str.tostring(z, "#.##"))
         mobile_row1_col = is_filtered ? mobile_status_col : color.lime
-        table.cell(panel, 0, 1, mobile_row1, bgcolor=bg_cell, text_color=mobile_row1_col, text_size=t_size)
+        table.cell(panel, 0, 1, mobile_row1, bgcolor=bg_cell, text_color=mobile_row1_col, text_size=t_size, text_halign=text.align_left)
         table.cell(panel, 1, 1, "", bgcolor=color.new(color.black, 100), text_size=t_size, width=0)
         // Row 2: VIX Regime + Value (例: "🟡 VIX:18 NORMAL")
         vix_regime_emoji = vix_regime == 3 ? "🔴" : vix_regime == 1 ? "🟢" : "🟡"
         vix_regime_short = vix_regime == 3 ? "HIGH" : vix_regime == 1 ? "LOW" : "NORMAL"
         mobile_row2 = vix_regime_emoji + " VIX:" + str.tostring(vix, "#.#") + " " + vix_regime_short
-        table.cell(panel, 0, 2, mobile_row2, bgcolor=bg_cell, text_color=vix_regime_color, text_size=t_size)
+        table.cell(panel, 0, 2, mobile_row2, bgcolor=bg_cell, text_color=vix_regime_color, text_size=t_size, text_halign=text.align_left)
         table.cell(panel, 1, 2, "", bgcolor=color.new(color.black, 100), text_size=t_size, width=0)
 
     // ===== Compact / Full Mode =====
