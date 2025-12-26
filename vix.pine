@@ -742,18 +742,16 @@ if show_table and barstate.islast
 
     mode_display = sens_mode == "High (Scalping)" ? "(High)" : sens_mode == "Normal (Swing)" ? "(Normal)" : "(Trend Guard)"
 
-    // ===== Mobile Mode: 极简2行显示 =====
+    // ===== Mobile Mode: 极简2行显示 (方案A) =====
     if is_mobile
-        // Row 0: Signal + Score
-        mobile_signal = signal_emoji + " " + signal_txt
-        mobile_score = format_signed_int(math.round(score))
-        table.cell(panel, 0, 0, mobile_signal, bgcolor=bg_header, text_color=signal_col, text_size=t_size, width=14)
-        table.cell(panel, 1, 0, mobile_score, bgcolor=bg_header, text_color=signal_col, text_size=t_size, width=4)
-        // Row 1: VIX + Z-Score
-        mobile_vix = "VIX:" + str.tostring(vix, "#.#") + " " + vix_regime_txt
-        mobile_z = "Z:" + str.tostring(z, "#.##")
-        table.cell(panel, 0, 1, mobile_vix, bgcolor=bg_cell, text_color=vix_regime_color, text_size=t_size)
-        table.cell(panel, 1, 1, mobile_z, bgcolor=bg_cell, text_color=z < -thresh_mid ? color.lime : z > thresh_mid ? color.orange : color.silver, text_size=t_size)
+        // Row 0: "🟢 STRONG BUY +6" (信号 + 评分，一行显示)
+        mobile_row0 = signal_emoji + " " + signal_txt + " " + format_signed_int(math.round(score))
+        table.cell(panel, 0, 0, mobile_row0, bgcolor=bg_header, text_color=signal_col, text_size=t_size, width=18)
+        table.cell(panel, 1, 0, "", bgcolor=bg_header, text_size=t_size, width=0)
+        // Row 1: "VIX:28 HIGH VOL Z:-2.3" (VIX + 区间 + Z分数，一行显示)
+        mobile_row1 = "VIX:" + str.tostring(vix, "#.#") + " " + vix_regime_txt + " Z:" + str.tostring(z, "#.##")
+        table.cell(panel, 0, 1, mobile_row1, bgcolor=bg_cell, text_color=vix_regime_color, text_size=t_size)
+        table.cell(panel, 1, 1, "", bgcolor=bg_cell, text_size=t_size, width=0)
 
     // ===== Compact / Full Mode =====
     if not is_mobile

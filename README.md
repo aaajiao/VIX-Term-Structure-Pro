@@ -74,10 +74,10 @@ VIX Term Structure Pro 是一款高级多因子市场择时指标，结合 VIX �
 
 #### Mobile Mode | 移动模式 (2 rows) - v7.6
 
-| Row | Column 1 | Column 2 | English | 中文 |
-|-----|----------|----------|---------|------|
-| 1 | Signal (🟢 STRONG BUY) | Score (+6) | Trading signal | 交易信号 |
-| 2 | VIX:28 HIGH VOL | Z:-2.3 | VIX value + regime | VIX 值 + 区间 |
+| Row | Content | Example | 中文说明 |
+|-----|---------|---------|----------|
+| 1 | Signal + Score | 🟢 STRONG BUY +6 | 信号 + 评分 |
+| 2 | VIX + Regime + Z | VIX:28 HIGH VOL Z:-2.3 | VIX + 区间 + Z分数 |
 
 > 📱 **Minimal display for mobile devices** / 适合手机端的极简显示
 
@@ -481,8 +481,8 @@ Total Score =
 **📱 Mobile Mode | 移动模式**
 - **2-Row Minimal Display**: Ultra-compact dashboard showing only essential info
   两行极简显示：仅显示核心信息
-  - Row 1: Signal + Score (e.g., "🟢 STRONG BUY +6") / 信号 + 评分
-  - Row 2: VIX + Z-Score (e.g., "VIX:28 HIGH VOL Z:-2.3") / VIX + Z分数
+  - Row 1: `🟢 STRONG BUY +6` (信号 + 评分)
+  - Row 2: `VIX:28 HIGH VOL Z:-2.3` (VIX + 区间 + Z分数)
 - **Mobile-Friendly**: Designed for smaller screens and quick checks
   移动端友好：适合小屏幕和快速查看
 
