@@ -413,7 +413,7 @@ Max Profit Row:   🚨+X.X% 🟢+X.X% 🟡+X.X%
 
 ## 🔔 Alerts | 警报
 
-### Smart Alert System v2 (v7.6) | 智能警报系统 v2
+### Smart Alert System v2 (v7.6+) | 智能警报系统 v2
 
 **English:**
 The Smart Alert v2 shows Overall Bias + Status + VIX in a unified format, matching the Mobile mode display. Alerts trigger on signal entry, upgrades, and downgrades.
@@ -437,10 +437,11 @@ The Smart Alert v2 shows Overall Bias + Status + VIX in a unified format, matchi
 SPY: 🟢 STRONG BUY +5 | ✅ Z:-2.30 | 🟡 VIX:18 NORMAL
 ```
 
-**被过滤信号 | Filtered Signal:**
+**被过滤信号 (v7.7 分级过滤) | Filtered Signal (v7.7 Graduated):**
 ```
-SPY: 🟡 BUY DIP +4 | ✋ WAIT: High Vol | 🔴 VIX:32 HIGH
-QQQ: 🟠 SELL/HEDGE -3 | ☕ HOLD: Low Vol | 🟢 VIX:12 LOW
+SPY: 🟡 BUY DIP +3 | ✋ WAIT: Need ≥4 | 🔴 VIX:32 HIGH
+QQQ: 🟠 SELL/HEDGE -2 | ☕ HOLD: Need ≤-3 | 🟢 VIX:12 LOW
+IWM: 🟡 BUY DIP +4 | 🐻 WAIT: Bear Market | 🟡 VIX:18 NORMAL
 ```
 
 | Part | Content | 中文说明 |
@@ -448,6 +449,14 @@ QQQ: 🟠 SELL/HEDGE -3 | ☕ HOLD: Low Vol | 🟢 VIX:12 LOW
 | Part 1 | Overall Bias + Score | 信号 + 评分 |
 | Part 2 | Status (✅ OK or filter reason) | 状态 (可执行或过滤原因) |
 | Part 3 | VIX Regime + Value | VIX 区间 + 数值 |
+
+**v7.7 过滤状态说明 | v7.7 Filter Status:**
+| Status | Meaning | 含义 |
+|--------|---------|------|
+| `✋ WAIT: Need ≥4` | HIGH VOL requires Score ≥ 4 | 高波动期需更高分数 |
+| `✋ WAIT: Momentum` | Z Momentum not confirmed | 动量未确认 |
+| `☕ HOLD: Need ≤-3` | LOW VOL requires Score ≤ -3 | 低波动期需更强信号 |
+| `🐻 WAIT: Bear Market` | Bear market trend filter | 熊市趋势过滤 |
 
 ### VIX Regime Adaptive Cooldown | VIX 区间自适应冷却
 
