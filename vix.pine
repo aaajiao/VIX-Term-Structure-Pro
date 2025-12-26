@@ -950,10 +950,10 @@ if show_table and barstate.islast
         table.cell(panel, 0, warning_row_idx, "⚠️ Live Mode", bgcolor=color.new(color.orange, 85), text_color=color.orange, text_size=size.tiny, text_halign=text.align_left)
         table.cell(panel, 1, warning_row_idx, "Historical Repaints", bgcolor=color.new(color.orange, 85), text_color=color.orange, text_size=size.tiny)
 
-// ========== 10. SMART ALERT (Unified Alert System) ==========
-// 基于 Adaptive RSI 的智能警报：信号聚合 + 上升沿检测 + VIX Regime 自适应冷却
-// 高波动期(HIGH VOL)冷却减半 → 市场变化快，需要更及时的信号
-// 低波动期(LOW VOL)冷却加倍 → 市场平静，减少不必要通知
+// ========== 10. SMART ALERT (Unified Alert System v2) ==========
+// 方案C: 完整信息警报 - 显示 Overall Bias + Status + VIX
+// 可执行信号: SPY: 🟢 STRONG BUY +5 | ✅ OK | 🟡 VIX:18
+// 被过滤信号: SPY: 🟡 BUY DIP +4 | ✋ WAIT: High Vol | 🔴 VIX:32
 
 var int last_buy_alert_bar = 0
 var int last_sell_alert_bar = 0
@@ -961,59 +961,53 @@ var int last_sell_alert_bar = 0
 // VIX Regime 自适应冷却：高波动减半，低波动加倍
 adaptive_cooldown = vix_regime == 3 ? math.round(alert_cooldown_base / 2) : vix_regime == 1 ? alert_cooldown_base * 2 : alert_cooldown_base
 
-if enable_smart_alert
-    // ===== 买入信号聚合 =====
-    has_buy_signal = final_crash_buy or final_strong_buy or final_buy_dip
-    has_buy_signal_prev = (final_crash_buy[1] == true) or (final_strong_buy[1] == true) or (final_buy_dip[1] == true)
-    is_new_buy = has_buy_signal and not has_buy_signal_prev
-    
-    if is_new_buy and (bar_index - last_buy_alert_bar > adaptive_cooldown)
-        // 构建消息头
-        msg = str.format("{0}: 🟢 BUY → ", syminfo.ticker)
-        
-        // 添加触发的信号标签
-        if final_crash_buy
-            msg := msg + "🚨CRASH "
-        if final_strong_buy
-            msg := msg + "🟢STRONG "
-        if final_buy_dip
-            msg := msg + "🟡DIP "
-        
-        // 添加上下文：Score, Z, VIX Regime, 指数趋势
-        msg := msg + str.format("| Score:{0} Z:{1,number,#.##} VIX:{2,number,#.#}({3}) {4}",
-            score, z, vix, vix_regime_txt, trend_status_txt)
+// VIX Regime emoji for alert
+alert_vix_emoji = vix_regime == 3 ? "🔴" : vix_regime == 1 ? "🟢" : "🟡"
+alert_vix_short = vix_regime == 3 ? "HIGH" : vix_regime == 1 ? "LOW" : "NORMAL"
 
-        // v7.5 新增：VIX特性上下文
-        if use_vix_characteristics
-            msg := msg + str.format(" | Char:{0} BD:{1}D {2}",
-                vix_characteristics_total, backwardation_days, divergence_status)
+if enable_smart_alert
+    // ===== 买入信号检测 (包含被过滤的信号) =====
+    // 原始信号：score >= min_score_buy (未过滤前)
+    has_raw_buy_signal = score >= min_score_buy
+    has_raw_buy_signal_prev = score[1] >= min_score_buy
+    is_new_raw_buy = has_raw_buy_signal and not has_raw_buy_signal_prev
+
+    if is_new_raw_buy and (bar_index - last_buy_alert_bar > adaptive_cooldown)
+        // 构建消息：Overall Bias + Status + VIX
+        msg = str.format("{0}: {1} {2} {3} | ",
+            syminfo.ticker, mobile_bias_emoji, mobile_bias_txt, format_signed_int(math.round(score)))
+
+        // Status 部分
+        if is_filtered
+            msg := msg + mobile_status_emoji + " " + mobile_status_txt
+        else
+            msg := msg + "✅ Z:" + str.tostring(z, "#.##")
+
+        // VIX 部分
+        msg := msg + str.format(" | {0} VIX:{1,number,#.#} {2}", alert_vix_emoji, vix, alert_vix_short)
 
         alert(msg, alert_freq)
         last_buy_alert_bar := bar_index
 
-    // ===== 卖出信号聚合 =====
-    has_sell_signal = is_euphoria_sell or is_strong_sell or is_sell_hedge
-    has_sell_signal_prev = (is_euphoria_sell[1] == true) or (is_strong_sell[1] == true) or (is_sell_hedge[1] == true)
-    is_new_sell = has_sell_signal and not has_sell_signal_prev
-    
-    if is_new_sell and (bar_index - last_sell_alert_bar > adaptive_cooldown)
-        msg = str.format("{0}: 🔴 SELL → ", syminfo.ticker)
-        
-        if is_euphoria_sell
-            msg := msg + "🔥EUPHORIA "
-        if is_strong_sell
-            msg := msg + "🔴STRONG "
-        if is_sell_hedge
-            msg := msg + "🟠HEDGE "
-        
-        // 添加上下文：Score, Z, SKEW, 指数趋势
-        msg := msg + str.format("| Score:{0} Z:{1,number,#.##} SKEW:{2,number,#} {3}",
-            score, z, skew, trend_status_txt)
+    // ===== 卖出信号检测 (包含被过滤的信号) =====
+    // 原始信号：score <= -2 (未过滤前)
+    has_raw_sell_signal = score <= -2
+    has_raw_sell_signal_prev = score[1] <= -2
+    is_new_raw_sell = has_raw_sell_signal and not has_raw_sell_signal_prev
 
-        // v7.5 新增：VIX特性上下文
-        if use_vix_characteristics
-            msg := msg + str.format(" | Char:{0} {1} {2}",
-                vix_characteristics_total, vol_state_txt, divergence_status)
+    if is_new_raw_sell and (bar_index - last_sell_alert_bar > adaptive_cooldown)
+        // 构建消息：Overall Bias + Status + VIX
+        msg = str.format("{0}: {1} {2} {3} | ",
+            syminfo.ticker, mobile_bias_emoji, mobile_bias_txt, format_signed_int(math.round(score)))
+
+        // Status 部分
+        if is_filtered
+            msg := msg + mobile_status_emoji + " " + mobile_status_txt
+        else
+            msg := msg + "✅ Z:" + str.tostring(z, "#.##")
+
+        // VIX 部分
+        msg := msg + str.format(" | {0} VIX:{1,number,#.#} {2}", alert_vix_emoji, vix, alert_vix_short)
 
         alert(msg, alert_freq)
         last_sell_alert_bar := bar_index

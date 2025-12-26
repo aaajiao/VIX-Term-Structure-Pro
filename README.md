@@ -413,20 +413,32 @@ Max Profit Row:   🚨+X.X% 🟢+X.X% 🟡+X.X%
 
 ## 🔔 Alerts | 警报
 
-### Smart Alert System (v7.3) | 智能警报系统
+### Smart Alert System v2 (v7.6) | 智能警报系统 v2
 
 **English:**
-The unified Smart Alert system aggregates all buy/sell signals into comprehensive messages with rising edge detection to prevent duplicate notifications.
+The Smart Alert v2 shows Overall Bias + Status + VIX in a unified format, matching the Mobile mode display. Both actionable and filtered signals trigger alerts.
 
 **中文：**
-统一智能警报系统将所有买卖信号聚合为综合消息，采用上升沿检测防止重复通知。
+智能警报 v2 以统一格式显示 Overall Bias + Status + VIX，与 Mobile 模式一致。可执行信号和被过滤信号都会触发警报。
 
 ### Alert Message Format | 警报消息格式
 
-| Signal Type | Format | Example | 示例 |
-|-------------|--------|---------|------|
-| � Buy Signals | `{Ticker}: 🟢 BUY → [Signal Tags] \| Context` | `SPY: 🟢 BUY → 🚨CRASH 🟢STRONG \| Score:6 Z:-2.5 VIX:35(HIGH VOL) 🔴SPX 🟢NDX 🟢RUT` | 包含评分、Z分数、VIX状态、三指数趋势 |
-| � Sell Signals | `{Ticker}: 🔴 SELL → [Signal Tags] \| Context` | `QQQ: � SELL → 🔥EUPHORIA 🟠HEDGE \| Score:-6 Z:2.8 SKEW:148 🟢SPX 🟢NDX 🟢RUT` | 包含评分、Z分数、SKEW、三指数趋势 |
+**可执行信号 | Actionable Signal:**
+```
+SPY: 🟢 STRONG BUY +5 | ✅ Z:-2.30 | 🟡 VIX:18 NORMAL
+```
+
+**被过滤信号 | Filtered Signal:**
+```
+SPY: 🟡 BUY DIP +4 | ✋ WAIT: High Vol | 🔴 VIX:32 HIGH
+QQQ: 🟠 SELL/HEDGE -3 | ☕ HOLD: Low Vol | 🟢 VIX:12 LOW
+```
+
+| Part | Content | 中文说明 |
+|------|---------|----------|
+| Part 1 | Overall Bias + Score | 信号 + 评分 |
+| Part 2 | Status (✅ OK or filter reason) | 状态 (可执行或过滤原因) |
+| Part 3 | VIX Regime + Value | VIX 区间 + 数值 |
 
 ### VIX Regime Adaptive Cooldown | VIX 区间自适应冷却
 
@@ -495,6 +507,12 @@ Total Score =
 - **Signal/Status Separation**: 信号与状态分离显示
   - Overall Bias 始终显示原始信号建议
   - Status 显示过滤状态或Z分数确认
+
+**🔔 Smart Alert v2 | 智能警报 v2**
+- **Unified Format**: 警报格式与 Mobile 模式一致
+  - `SPY: 🟢 STRONG BUY +5 | ✅ Z:-2.30 | 🟡 VIX:18 NORMAL`
+- **Filtered Signal Alerts**: 被过滤信号也会触发警报
+  - `SPY: 🟡 BUY DIP +4 | ✋ WAIT: High Vol | 🔴 VIX:32 HIGH`
 
 ### v7.5 (2025-12-25)
 
