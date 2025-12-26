@@ -1,8 +1,8 @@
 //@version=6
-indicator("VIX Term Structure Pro [v7.5]", overlay=false, max_lines_count=500)
+indicator("VIX Term Structure Pro [v7.6]", overlay=false, max_lines_count=500)
 
 // ╔════════════════════════════════════════════════════════════════════════════╗
-// ║                    VIX Term Structure Pro v7.5 使用指南                      ║
+// ║                    VIX Term Structure Pro v7.6 使用指南                      ║
 // ╠════════════════════════════════════════════════════════════════════════════╣
 // ║ 📊 仪表盘指标解读                                                           ║
 // ║----------------------------------------------------------------------------║
@@ -21,7 +21,9 @@ indicator("VIX Term Structure Pro [v7.5]", overlay=false, max_lines_count=500)
 // ║ HOLD (持有)    │ 🟠 卖出侧。评分达标但被过滤（如低波动或动量未确认）。        ║
 // ║                │ 含义：不要急于卖出/对冲，继续持有仓位。                      ║
 // ╠════════════════════════════════════════════════════════════════════════════╣
-// ║ 📌 v7.5 新增功能 - VIX特性分析                                               ║
+// ║ 📌 v7.6 新增功能 - Mobile模式 + VIX特性分析                                  ║
+// ║----------------------------------------------------------------------------║
+// ║ 📱 Mobile模式    │ 极简两行显示：信号+评分 / VIX+Z分数                  ║
 // ║----------------------------------------------------------------------------║
 // ║ 📉 均值回归       │ VIX极高(>2σ)必然回归，VIX极低(<-1.5σ)警惕反弹      ║
 // ║ 📅 Backwardation │ 追踪持续天数，5-7天后通常是较好买点                 ║
@@ -134,7 +136,7 @@ mid_line_style = input.string("Dashed", "±1 Line Style", options=["Solid", "Das
 // ────────────────────────────────────────────────────────────────────────────
 grp_dashboard = "📋 Dashboard"
 show_table  = input.bool(true, "Show Dashboard", group=grp_dashboard, tooltip="显示仪表盘 Show dashboard panel")
-panel_mode  = input.string("Compact", "Dashboard Mode", options=["Compact", "Full"], group=grp_dashboard, tooltip="Compact: 精简8行 Essential 8 rows\nFull: 完整12+行 Full 12+ rows")
+panel_mode  = input.string("Compact", "Dashboard Mode", options=["Mobile", "Compact", "Full"], group=grp_dashboard, tooltip="Mobile: 极简2行 Minimal 2 rows\nCompact: 精简10行 Essential 10 rows\nFull: 完整15+行 Full 15+ rows")
 table_position = input.string("Top Right", "Dashboard Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left", "Top Center", "Bottom Center"], group=grp_dashboard, tooltip="仪表盘位置 Dashboard position")
 table_size  = input.string("Normal", "Dashboard Text Size", options=["Small", "Normal", "Large"], group=grp_dashboard, tooltip="文字大小 Text size")
 bg_transp   = input.int(70, "Dashboard Transparency", minval=0, maxval=100, group=grp_dashboard, tooltip="背景透明度 Background transparency\n0=不透明 Opaque / 100=全透明 Transparent")
@@ -230,6 +232,7 @@ thresh_mid = sens_mode == "High (Scalping)" ? 1.0 : sens_mode == "Normal (Swing)
 min_score_buy = sens_mode == "High (Scalping)" ? 2 : sens_mode == "Normal (Swing)" ? 3 : 4
 
 t_size = table_size == "Small" ? size.small : table_size == "Large" ? size.large : size.normal
+is_mobile = panel_mode == "Mobile"
 is_compact = panel_mode == "Compact"
 
 // ========== 2. 数据获取 ==========
@@ -730,14 +733,14 @@ max_profit_crash_ret = not na(spx_close[crash_return_bars]) ? (max_profit_crash_
 max_profit_strong_ret = not na(spx_close[strong_return_bars]) ? (max_profit_strong_price - spx_close[strong_return_bars]) / spx_close[strong_return_bars] * 100 : 0.0
 max_profit_dip_ret = not na(spx_close[dip_return_bars]) ? (max_profit_dip_price - spx_close[dip_return_bars]) / spx_close[dip_return_bars] * 100 : 0.0
 
-// 如果是 Live Mode，额外增加一行用于显示警告
-warning_row_count = backtest_mode ? 0 : 1
+// 如果是 Live Mode，额外增加一行用于显示警告 (仅 Compact/Full 模式)
+warning_row_count = backtest_mode or is_mobile ? 0 : 1
 // Max Profit Stats 额外行数
-max_profit_row_count = use_max_profit_stats and not is_compact ? 1 : 0
+max_profit_row_count = use_max_profit_stats and not is_compact and not is_mobile ? 1 : 0
 // VIX Characteristics 额外行数 (v7.5 新增)
-vix_char_row_count = show_vix_characteristics ? (is_compact ? 1 : 5) : 0
-// Compact: 9 rows, Full: 15-17 rows max (depending on VVIX and Max Profit)
-panel_rows = (is_compact ? 9 : (use_vvix ? 16 : 15)) + warning_row_count + max_profit_row_count + vix_char_row_count
+vix_char_row_count = show_vix_characteristics and not is_mobile ? (is_compact ? 1 : 5) : 0
+// Mobile: 2 rows, Compact: 10 rows, Full: 15-17 rows max (depending on VVIX and Max Profit)
+panel_rows = is_mobile ? 2 : (is_compact ? 10 : (use_vvix ? 16 : 15)) + warning_row_count + max_profit_row_count + vix_char_row_count
 var table panel = table.new(get_table_pos(table_position), 2, panel_rows, border_width=0, frame_color=color.new(color.gray, 100), border_color=color.new(color.gray, 100))
 
 if show_table and barstate.islast
@@ -749,59 +752,75 @@ if show_table and barstate.islast
     txt_lbl   = color.new(color.white, 10)
 
     mode_display = sens_mode == "High (Scalping)" ? "(High)" : sens_mode == "Normal (Swing)" ? "(Normal)" : "(Trend Guard)"
-    table.cell(panel, 0, 0, "AI Signal " + mode_display, bgcolor=bg_header, text_color=color.white, text_size=t_size, width=12)
-    table.cell(panel, 1, 0, is_compact ? "Compact" : "Full", bgcolor=bg_header, text_color=color.white, text_size=t_size, width=9)
-    
-    // Row 1: Overall Bias
-    table.cell(panel, 0, 1, "Overall Bias", bgcolor=bg_cell, text_color=color.white, text_halign=text.align_left, text_size=t_size)
-    table.cell(panel, 1, 1, signal_txt, bgcolor=bg_cell, text_color=signal_col, text_size=t_size)
 
-    // Row 2: AI Score
-    score_col = score >= 5 ? color.green : score >= min_score_buy ? color.lime : score <= -5 ? color.red : score <= -2 ? color.orange : color.silver
-    table.cell(panel, 0, 2, "AI Score", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-    table.cell(panel, 1, 2, str.tostring(score, "#.#"), bgcolor=bg_cell, text_color=score_col, text_size=t_size)
+    // ===== Mobile Mode: 极简2行显示 =====
+    if is_mobile
+        // Row 0: Signal + Score
+        mobile_signal = signal_emoji + " " + signal_txt
+        mobile_score = format_signed_int(math.round(score))
+        table.cell(panel, 0, 0, mobile_signal, bgcolor=bg_header, text_color=signal_col, text_size=t_size, width=14)
+        table.cell(panel, 1, 0, mobile_score, bgcolor=bg_header, text_color=signal_col, text_size=t_size, width=4)
+        // Row 1: VIX + Z-Score
+        mobile_vix = "VIX:" + str.tostring(vix, "#.#") + " " + vix_regime_txt
+        mobile_z = "Z:" + str.tostring(z, "#.##")
+        table.cell(panel, 0, 1, mobile_vix, bgcolor=bg_cell, text_color=vix_regime_color, text_size=t_size)
+        table.cell(panel, 1, 1, mobile_z, bgcolor=bg_cell, text_color=z < -thresh_mid ? color.lime : z > thresh_mid ? color.orange : color.silver, text_size=t_size)
 
-    // Row 3: Market Trend (双指数合并显示)
-    table.cell(panel, 0, 3, "Market Trend", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-    table.cell(panel, 1, 3, trend_status_txt, bgcolor=bg_cell, text_color=trend_color, text_size=t_size)
+    // ===== Compact / Full Mode =====
+    if not is_mobile
+        table.cell(panel, 0, 0, "AI Signal " + mode_display, bgcolor=bg_header, text_color=color.white, text_size=t_size, width=12)
+        table.cell(panel, 1, 0, is_compact ? "Compact" : "Full", bgcolor=bg_header, text_color=color.white, text_size=t_size, width=9)
 
-    // Row 4: VIX Regime
-    table.cell(panel, 0, 4, "VIX Regime", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-    table.cell(panel, 1, 4, vix_regime_txt + " (" + str.tostring(vix, "#.#") + ")", bgcolor=bg_cell, text_color=vix_regime_color, text_size=t_size)
+        // Row 1: Overall Bias
+        table.cell(panel, 0, 1, "Overall Bias", bgcolor=bg_cell, text_color=color.white, text_halign=text.align_left, text_size=t_size)
+        table.cell(panel, 1, 1, signal_txt, bgcolor=bg_cell, text_color=signal_col, text_size=t_size)
 
-    // Row 5: Term Struct Z
-    z_col_t = z > thresh_strong ? color.new(color.blue, 20) : z < -thresh_strong ? color.new(color.red, 20) : color.silver
-    table.cell(panel, 0, 5, "Term Struct Z", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-    table.cell(panel, 1, 5, str.tostring(z, "#.##"), bgcolor=bg_cell, text_color=z_col_t, text_size=t_size)
+        // Row 2: AI Score
+        score_col = score >= 5 ? color.green : score >= min_score_buy ? color.lime : score <= -5 ? color.red : score <= -2 ? color.orange : color.silver
+        table.cell(panel, 0, 2, "AI Score", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
+        table.cell(panel, 1, 2, str.tostring(score, "#.#"), bgcolor=bg_cell, text_color=score_col, text_size=t_size)
 
-    // Row 6: Vol Status
-    vol_ratio = not na(vx1_vol) ? vx1_vol / vol_ma : 0
-    vol_txt = vol_ratio > 2.5 ? "PANIC SPIKE" : vol_ratio > 1.5 ? "High Activity" : "Normal"
-    vol_col_txt = vol_ratio > 2.5 ? color.yellow : vol_ratio > 1.5 ? color.aqua : color.silver
-    table.cell(panel, 0, 6, "Vol Status", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-    table.cell(panel, 1, 6, vol_txt, bgcolor=bg_cell, text_color=vol_col_txt, text_size=t_size)
+        // Row 3: Market Trend (双指数合并显示)
+        table.cell(panel, 0, 3, "Market Trend", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
+        table.cell(panel, 1, 3, trend_status_txt, bgcolor=bg_cell, text_color=trend_color, text_size=t_size)
 
-    // Row 7: Z Momentum
-    z_mom_txt = z_momentum_bullish ? "↓ Falling" : z_momentum_bearish ? "↑ Rising" : "→ Flat"
-    z_mom_col = z_momentum_bullish ? color.lime : z_momentum_bearish ? color.orange : color.silver
-    table.cell(panel, 0, 7, "Z Momentum", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-    table.cell(panel, 1, 7, z_mom_txt, bgcolor=bg_cell, text_color=z_mom_col, text_size=t_size)
+        // Row 4: VIX Regime
+        table.cell(panel, 0, 4, "VIX Regime", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
+        table.cell(panel, 1, 4, vix_regime_txt + " (" + str.tostring(vix, "#.#") + ")", bgcolor=bg_cell, text_color=vix_regime_color, text_size=t_size)
 
-    // Row 8: Signal Stats (v7.0 新增)
-    if show_signal_stats
-        stats_txt = "🚨:" + str.tostring(crash_buy_count) + " 🟢:" + str.tostring(strong_buy_count) + " 🟡:" + str.tostring(buy_dip_count)
-        table.cell(panel, 0, 8, "Signal Stats", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-        table.cell(panel, 1, 8, stats_txt, bgcolor=bg_cell, text_color=color.white, text_size=t_size)
+        // Row 5: Term Struct Z
+        z_col_t = z > thresh_strong ? color.new(color.blue, 20) : z < -thresh_strong ? color.new(color.red, 20) : color.silver
+        table.cell(panel, 0, 5, "Term Struct Z", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
+        table.cell(panel, 1, 5, str.tostring(z, "#.##"), bgcolor=bg_cell, text_color=z_col_t, text_size=t_size)
 
-    // Row 9: VIX Characteristics (v7.5 新增 - Compact模式汇总)
-    if show_vix_characteristics and is_compact
-        char_summary = format_signed_int(vix_characteristics_total) + " BD:" + str.tostring(backwardation_days) + "D " + (is_bullish_divergence ? "🟢" : is_bearish_divergence ? "🔴" : "→")
-        char_color = vix_characteristics_total >= 3 ? color.lime : vix_characteristics_total <= -2 ? color.red : color.silver
-        table.cell(panel, 0, 9, "VIX Chars", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-        table.cell(panel, 1, 9, char_summary, bgcolor=bg_cell, text_color=char_color, text_size=t_size)
+        // Row 6: Vol Status
+        vol_ratio = not na(vx1_vol) ? vx1_vol / vol_ma : 0
+        vol_txt = vol_ratio > 2.5 ? "PANIC SPIKE" : vol_ratio > 1.5 ? "High Activity" : "Normal"
+        vol_col_txt = vol_ratio > 2.5 ? color.yellow : vol_ratio > 1.5 ? color.aqua : color.silver
+        table.cell(panel, 0, 6, "Vol Status", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
+        table.cell(panel, 1, 6, vol_txt, bgcolor=bg_cell, text_color=vol_col_txt, text_size=t_size)
+
+        // Row 7: Z Momentum
+        z_mom_txt = z_momentum_bullish ? "↓ Falling" : z_momentum_bearish ? "↑ Rising" : "→ Flat"
+        z_mom_col = z_momentum_bullish ? color.lime : z_momentum_bearish ? color.orange : color.silver
+        table.cell(panel, 0, 7, "Z Momentum", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
+        table.cell(panel, 1, 7, z_mom_txt, bgcolor=bg_cell, text_color=z_mom_col, text_size=t_size)
+
+        // Row 8: Signal Stats (v7.0 新增)
+        if show_signal_stats
+            stats_txt = "🚨:" + str.tostring(crash_buy_count) + " 🟢:" + str.tostring(strong_buy_count) + " 🟡:" + str.tostring(buy_dip_count)
+            table.cell(panel, 0, 8, "Signal Stats", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
+            table.cell(panel, 1, 8, stats_txt, bgcolor=bg_cell, text_color=color.white, text_size=t_size)
+
+        // Row 9: VIX Characteristics (v7.5 新增 - Compact模式汇总)
+        if show_vix_characteristics and is_compact
+            char_summary = format_signed_int(vix_characteristics_total) + " BD:" + str.tostring(backwardation_days) + "D " + (is_bullish_divergence ? "🟢" : is_bearish_divergence ? "🔴" : "→")
+            char_color = vix_characteristics_total >= 3 ? color.lime : vix_characteristics_total <= -2 ? color.red : color.silver
+            table.cell(panel, 0, 9, "VIX Chars", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
+            table.cell(panel, 1, 9, char_summary, bgcolor=bg_cell, text_color=char_color, text_size=t_size)
 
     // ===== Full Mode Only =====
-    if not is_compact
+    if not is_compact and not is_mobile
         base_row = show_signal_stats ? 9 : 8
         
         // Avg Return 分级显示 (v7.1 新增)
