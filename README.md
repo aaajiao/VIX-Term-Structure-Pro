@@ -76,8 +76,14 @@ VIX Term Structure Pro 是一款高级多因子市场择时指标，结合 VIX �
 
 | Row | Content | Example | 中文说明 |
 |-----|---------|---------|----------|
-| 1 | Signal + Score | 🟢 STRONG BUY +6 | 信号 + 评分 |
-| 2 | VIX + Regime + Z | VIX:28 HIGH VOL Z:-2.3 | VIX + 区间 + Z分数 |
+| 1 | Signal/Status + Score | 🟢 STRONG BUY +6 | 信号/状态 + 评分 |
+| 2 | Z-Score + Regime | Z:-2.30 HIGH VOL | Z分数 + VIX区间 |
+
+**被过滤时显示状态 | When Filtered:**
+| Row | Example | 中文说明 |
+|-----|---------|----------|
+| 1 | ✋ WAIT (High Vol) +4 | 等待 (高波动) |
+| 1 | ☕ HOLD (Low Vol) -3 | 持有 (低波动) |
 
 > 📱 **Minimal display for mobile devices** / 适合手机端的极简显示
 
@@ -479,12 +485,12 @@ Total Score =
 ### v7.6 (2025-12-26 | Current | 当前版本)
 
 **📱 Mobile Mode | 移动模式**
-- **2-Row Minimal Display**: Ultra-compact dashboard showing only essential info
-  两行极简显示：仅显示核心信息
-  - Row 1: `🟢 STRONG BUY +6` (信号 + 评分)
-  - Row 2: `VIX:28 HIGH VOL Z:-2.3` (VIX + 区间 + Z分数)
-- **Mobile-Friendly**: Designed for smaller screens and quick checks
-  移动端友好：适合小屏幕和快速查看
+- **2-Row Minimal Display**: Ultra-compact dashboard with signal/status
+  两行极简显示：信号/状态 + Z分数
+  - Row 1: `🟢 STRONG BUY +6` 或 `✋ WAIT (High Vol) +4`
+  - Row 2: `Z:-2.30 HIGH VOL`
+- **Status Display**: Shows ✋ WAIT / ☕ HOLD when signal is filtered
+  状态显示：信号被过滤时显示 WAIT/HOLD 状态及原因
 
 ### v7.5 (2025-12-25)
 
