@@ -627,24 +627,49 @@ buy_dip_avg_return = buy_dip_return_count > 0 ? buy_dip_return_sum / buy_dip_ret
 signal_txt = ""
 signal_col = color.gray
 signal_emoji = ""
+// Mobile模式用：原始信号和过滤状态分离
+mobile_bias_txt = ""
+mobile_bias_emoji = ""
+mobile_bias_col = color.gray
+mobile_status_txt = ""
+mobile_status_emoji = ""
+mobile_status_col = color.gray
+is_filtered = false
 
 if score >= 6
     signal_txt := "🚨 CRASH BUY"
     signal_col := color.new(#00FF00, 0)
     signal_emoji := "🚨"
+    mobile_bias_txt := "CRASH BUY"
+    mobile_bias_emoji := "🚨"
+    mobile_bias_col := color.new(#00FF00, 0)
 else if score >= 5
     signal_txt := "STRONG BUY"
     signal_col := color.green
     signal_emoji := "🟢"
+    mobile_bias_txt := "STRONG BUY"
+    mobile_bias_emoji := "🟢"
+    mobile_bias_col := color.green
 else if score >= min_score_buy
+    mobile_bias_txt := "BUY DIP"
+    mobile_bias_emoji := "🟡"
+    mobile_bias_col := color.lime
     if vix_regime == 3
         signal_txt := "WAIT (High Vol)"
         signal_col := color.gray
         signal_emoji := "✋"
+        is_filtered := true
+        mobile_status_txt := "WAIT: High Vol"
+        mobile_status_emoji := "✋"
+        mobile_status_col := color.yellow
     else if use_momentum_confirm and not is_buy_dip_momentum_ok
         signal_txt := "WAIT (Momentum)"
         signal_col := color.gray
         signal_emoji := "✋"
+        is_filtered := true
+        mobile_status_txt := "WAIT: Momentum"
+        mobile_status_emoji := "✋"
+        mobile_status_col := color.yellow
     else
         signal_txt := "BUY DIP"
         signal_col := color.lime
@@ -653,19 +678,36 @@ else if score <= -6
     signal_txt := "🔥 EUPHORIA SELL"
     signal_col := color.new(#FF0000, 0)
     signal_emoji := "🔥"
+    mobile_bias_txt := "EUPHORIA"
+    mobile_bias_emoji := "🔥"
+    mobile_bias_col := color.new(#FF0000, 0)
 else if score <= -5
     signal_txt := "STRONG SELL"
     signal_col := color.red
     signal_emoji := "🔴"
+    mobile_bias_txt := "STRONG SELL"
+    mobile_bias_emoji := "🔴"
+    mobile_bias_col := color.red
 else if score <= -2
+    mobile_bias_txt := "SELL/HEDGE"
+    mobile_bias_emoji := "🟠"
+    mobile_bias_col := color.orange
     if vix_regime == 1
         signal_txt := "HOLD (Low Vol)"
         signal_col := color.gray
         signal_emoji := "☕"
+        is_filtered := true
+        mobile_status_txt := "HOLD: Low Vol"
+        mobile_status_emoji := "☕"
+        mobile_status_col := color.orange
     else if use_momentum_confirm and not is_sell_hedge_momentum_ok
         signal_txt := "HOLD (Momentum)"
         signal_col := color.gray
         signal_emoji := "✋"
+        is_filtered := true
+        mobile_status_txt := "HOLD: Momentum"
+        mobile_status_emoji := "✋"
+        mobile_status_col := color.orange
     else
         signal_txt := "SELL/HEDGE"
         signal_col := color.orange
@@ -674,12 +716,19 @@ else
     signal_txt := "WAIT / HOLD"
     signal_col := color.gray
     signal_emoji := "⚪"
+    mobile_bias_txt := "NEUTRAL"
+    mobile_bias_emoji := "⚪"
+    mobile_bias_col := color.gray
 
 // 熊市特殊提示
 if use_trend_filter and not is_bull_market and score >= min_score_buy and score < 5
     signal_txt := "NO TRADE (Trend)"
     signal_col := color.gray
     signal_emoji := "🚫"
+    is_filtered := true
+    mobile_status_txt := "NO TRADE: Trend"
+    mobile_status_emoji := "🚫"
+    mobile_status_col := color.gray
 
 // ========== 7. 绘图 ==========
 bgcolor(contango_pct > 0 ? color.new(color.green, 95) : color.new(color.red, 92))
@@ -728,8 +777,8 @@ warning_row_count = backtest_mode or is_mobile ? 0 : 1
 max_profit_row_count = use_max_profit_stats and not is_compact and not is_mobile ? 1 : 0
 // VIX Characteristics 额外行数 (v7.5 新增)
 vix_char_row_count = show_vix_characteristics and not is_mobile ? (is_compact ? 1 : 5) : 0
-// Mobile: 2 rows, Compact: 10 rows, Full: 15-17 rows max (depending on VVIX and Max Profit)
-panel_rows = is_mobile ? 2 : (is_compact ? 10 : (use_vvix ? 16 : 15)) + warning_row_count + max_profit_row_count + vix_char_row_count
+// Mobile: 3 rows, Compact: 10 rows, Full: 15-17 rows max (depending on VVIX and Max Profit)
+panel_rows = is_mobile ? 3 : (is_compact ? 10 : (use_vvix ? 16 : 15)) + warning_row_count + max_profit_row_count + vix_char_row_count
 var table panel = table.new(get_table_pos(table_position), 2, panel_rows, border_width=0, frame_color=color.new(color.gray, 100), border_color=color.new(color.gray, 100))
 
 if show_table and barstate.islast
@@ -742,16 +791,23 @@ if show_table and barstate.islast
 
     mode_display = sens_mode == "High (Scalping)" ? "(High)" : sens_mode == "Normal (Swing)" ? "(Normal)" : "(Trend Guard)"
 
-    // ===== Mobile Mode: 极简2行显示 =====
+    // ===== Mobile Mode: 紧凑3行显示 =====
     if is_mobile
-        // Row 0: 信号/状态 + 评分 (例: "🟢 STRONG BUY +6" 或 "✋ WAIT (High Vol) +4")
-        mobile_row0 = signal_emoji + " " + signal_txt + " " + format_signed_int(math.round(score))
-        table.cell(panel, 0, 0, mobile_row0, bgcolor=bg_header, text_color=signal_col, text_size=t_size, width=22)
+        // Row 0: Overall Bias + Score (例: "🟢 STRONG BUY +5")
+        mobile_row0 = mobile_bias_emoji + " " + mobile_bias_txt + " " + format_signed_int(math.round(score))
+        table.cell(panel, 0, 0, mobile_row0, bgcolor=bg_header, text_color=mobile_bias_col, text_size=t_size, width=20)
         table.cell(panel, 1, 0, "", bgcolor=bg_header, text_size=t_size, width=0)
-        // Row 1: Z分数 + VIX区间 (例: "Z:-2.30 HIGH VOL")
-        mobile_row1 = "Z:" + str.tostring(z, "#.##") + " " + vix_regime_txt
-        table.cell(panel, 0, 1, mobile_row1, bgcolor=bg_cell, text_color=vix_regime_color, text_size=t_size)
+        // Row 1: Status (例: "✅ Z:-2.30" 或 "✋ WAIT: High Vol")
+        mobile_row1 = is_filtered ? (mobile_status_emoji + " " + mobile_status_txt) : ("✅ Z:" + str.tostring(z, "#.##"))
+        mobile_row1_col = is_filtered ? mobile_status_col : color.lime
+        table.cell(panel, 0, 1, mobile_row1, bgcolor=bg_cell, text_color=mobile_row1_col, text_size=t_size)
         table.cell(panel, 1, 1, "", bgcolor=bg_cell, text_size=t_size, width=0)
+        // Row 2: VIX Regime + Value (例: "🟡 VIX:18 NORMAL")
+        vix_regime_emoji = vix_regime == 3 ? "🔴" : vix_regime == 1 ? "🟢" : "🟡"
+        vix_regime_short = vix_regime == 3 ? "HIGH" : vix_regime == 1 ? "LOW" : "NORMAL"
+        mobile_row2 = vix_regime_emoji + " VIX:" + str.tostring(vix, "#.#") + " " + vix_regime_short
+        table.cell(panel, 0, 2, mobile_row2, bgcolor=bg_cell, text_color=vix_regime_color, text_size=t_size)
+        table.cell(panel, 1, 2, "", bgcolor=bg_cell, text_size=t_size, width=0)
 
     // ===== Compact / Full Mode =====
     if not is_mobile

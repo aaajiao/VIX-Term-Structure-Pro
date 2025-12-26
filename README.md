@@ -72,20 +72,23 @@ VIX Term Structure Pro 是一款高级多因子市场择时指标，结合 VIX �
 
 ### 📈 Dashboard Indicators | 仪表盘指标
 
-#### Mobile Mode | 移动模式 (2 rows) - v7.6
+#### Mobile Mode | 移动模式 (3 rows) - v7.6
 
 | Row | Content | Example | 中文说明 |
 |-----|---------|---------|----------|
-| 1 | Signal/Status + Score | 🟢 STRONG BUY +6 | 信号/状态 + 评分 |
-| 2 | Z-Score + Regime | Z:-2.30 HIGH VOL | Z分数 + VIX区间 |
+| 0 | Overall Bias + Score | 🟢 STRONG BUY +5 | 信号 + 评分 |
+| 1 | Status | ✅ Z:-2.30 | 状态 (无过滤时显示Z分数) |
+| 2 | VIX Regime + Value | 🟡 VIX:18 NORMAL | VIX区间 + 数值 |
 
-**被过滤时显示状态 | When Filtered:**
-| Row | Example | 中文说明 |
-|-----|---------|----------|
-| 1 | ✋ WAIT (High Vol) +4 | 等待 (高波动) |
-| 1 | ☕ HOLD (Low Vol) -3 | 持有 (低波动) |
+**被过滤时 Row 1 显示 | When Filtered (Row 1):**
+| Status | Example | 中文说明 |
+|--------|---------|----------|
+| 高波动过滤 | ✋ WAIT: High Vol | 等待 (高波动) |
+| 动量未确认 | ✋ WAIT: Momentum | 等待 (动量) |
+| 低波动过滤 | ☕ HOLD: Low Vol | 持有 (低波动) |
+| 趋势过滤 | 🚫 NO TRADE: Trend | 不交易 (趋势) |
 
-> 📱 **Minimal display for mobile devices** / 适合手机端的极简显示
+> 📱 **Compact 3-row display for mobile** / 紧凑3行移动端显示
 
 #### Compact Mode | 精简模式 (8 rows)
 
@@ -485,12 +488,13 @@ Total Score =
 ### v7.6 (2025-12-26 | Current | 当前版本)
 
 **📱 Mobile Mode | 移动模式**
-- **2-Row Minimal Display**: Ultra-compact dashboard with signal/status
-  两行极简显示：信号/状态 + Z分数
-  - Row 1: `🟢 STRONG BUY +6` 或 `✋ WAIT (High Vol) +4`
-  - Row 2: `Z:-2.30 HIGH VOL`
-- **Status Display**: Shows ✋ WAIT / ☕ HOLD when signal is filtered
-  状态显示：信号被过滤时显示 WAIT/HOLD 状态及原因
+- **3-Row Compact Display**: 紧凑3行显示，信息分层清晰
+  - Row 0: `🟢 STRONG BUY +5` (Overall Bias + Score)
+  - Row 1: `✅ Z:-2.30` 或 `✋ WAIT: High Vol` (Status)
+  - Row 2: `🟡 VIX:18 NORMAL` (VIX Regime + Value)
+- **Signal/Status Separation**: 信号与状态分离显示
+  - Overall Bias 始终显示原始信号建议
+  - Status 显示过滤状态或Z分数确认
 
 ### v7.5 (2025-12-25)
 
