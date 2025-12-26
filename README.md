@@ -1,4 +1,4 @@
-# VIX Term Structure Pro v7.6
+# VIX Term Structure Pro v7.7
 
 [![TradingView](https://img.shields.io/badge/TradingView-Indicator-blue?logo=tradingview)](https://www.tradingview.com/scripts/)
 [![Pine Script](https://img.shields.io/badge/Pine%20Script-v6-brightgreen)](https://www.tradingview.com/pine-script-reference/v6/)
@@ -83,10 +83,10 @@ VIX Term Structure Pro 是一款高级多因子市场择时指标，结合 VIX �
 **被过滤时 Row 1 显示 | When Filtered (Row 1):**
 | Status | Example | 中文说明 |
 |--------|---------|----------|
-| 高波动过滤 | ✋ WAIT: High Vol | 等待 (高波动) |
+| 高波动分级 | ✋ WAIT: Need ≥4 | 等待 (需Score≥4) v7.7 |
 | 动量未确认 | ✋ WAIT: Momentum | 等待 (动量) |
-| 低波动过滤 | ☕ HOLD: Low Vol | 持有 (低波动) |
-| 趋势过滤 | 🚫 NO TRADE: Trend | 不交易 (趋势) |
+| 低波动分级 | ☕ HOLD: Need ≤-3 | 持有 (需Score≤-3) v7.7 |
+| 熊市过滤 | 🐻 WAIT: Bear Market | 等待 (熊市) v7.7 |
 
 > 📱 **Compact 3-row display for mobile** / 紧凑3行移动端显示
 
@@ -364,16 +364,16 @@ Includes all Compact mode data plus: / 包含精简模式全部数据，另加�
 | English | 中文 |
 |---------|------|
 | Moderate fear detected | 检测到中等恐慌 |
-| v7.3: VIX cannot be HIGH VOL + requires Z Momentum falling | v7.3：VIX 不能处于高波动 + 需要 Z 动量下降 |
+| v7.7: HIGH VOL requires Score ≥ 4 + Z Momentum falling (graduated filter) | v7.7：高波动期需 Score≥4 + 动量确认（分级过滤） |
 | Filtered out in bear markets if Trend Filter ON | 趋势过滤开启时熊市中被过滤 |
 | Action: Add to existing positions, lower conviction | 操作：加仓现有头寸，较低确信度 |
 
-#### � SELL/HEDGE (Score ≤ -2)
+#### 🟠 SELL/HEDGE (Score ≤ -2)
 
 | English | 中文 |
 |---------|------|
 | Complacency or greed detected | 检测到自满或贪婪 |
-| v7.3: VIX cannot be LOW VOL + requires Z Momentum rising | v7.3：VIX 不能处于低波动 + 需要 Z 动量上升 |
+| v7.7: LOW VOL requires Score ≤ -3 + Z Momentum rising (graduated filter) | v7.7：低波动期需 Score≤-3 + 动量确认（分级过滤） |
 | Consider reducing exposure or hedging | 考虑减仓或对冲 |
 | Less reliable than buy signals (VIX mean-reverts asymmetrically) | 可靠性低于买入信号（VIX 不对称均值回归） |
 
@@ -472,11 +472,11 @@ QQQ: 🟠 SELL/HEDGE -3 | ☕ HOLD: Low Vol | 🟢 VIX:12 LOW
 ### Modular Scoring Functions | 模块化评分函数
 
 ```pinescript
-Total Score = 
-  + Z-Score Points (-4 to +4)      // Z 分数得分
-  + Contango Points (-1 to +2)     // 升水得分
+Total Score =
+  + Z-Score Points (-3 to +3)      // Z 分数得分 (v7.7: ±4→±3)
+  + Contango Points (-2 to +3)     // 升水得分 (v7.7: 深度Backwardation +3)
   + Basis Points (-1 to +2)        // 基差得分
-  + SKEW Points (-3 to +1)         // SKEW 得分
+  + SKEW Points (-2 to +2)         // SKEW 得分 (v7.7: 对称化)
   + P/C Ratio Points (-2 to +2)    // 看跌/看涨比得分
   + VVIX Points (-1 to +1)         // VVIX 得分（如启用）
   + Volume Spike Bonus (+1)        // 成交量激增奖励
@@ -485,20 +485,22 @@ Total Score =
   - Trend Penalty (-2)             // 趋势惩罚（熊市过滤开启时）
 ```
 
-### Point Allocation | 得分分配
+### Point Allocation | 得分分配 (v7.7 Updated)
 
 | Factor | Condition | Points | English | 中文 |
 |--------|-----------|--------|---------|------|
-| **Z-Score** | < -2.5 | +4 | Extreme fear | 极度恐慌 |
+| **Z-Score** | < -2.5 | **+3** | Extreme fear | 极度恐慌 |
 | | < -1.5 | +2 | Moderate fear | 中度恐慌 |
 | | > +1.5 | -2 | Moderate complacency | 中度自满 |
-| | > +2.5 | -4 | Extreme complacency | 极度自满 |
-| **Contango** | < 0% | +2 | Backwardation | 反向期货曲线 |
+| | > +2.5 | **-3** | Extreme complacency | 极度自满 |
+| **Contango** | < -5% | **+3** | Deep backwardation | 深度反向 (v7.7) |
+| | < 0% | +2 | Backwardation | 反向期货曲线 |
+| | > 15% | **-2** | Very high contango | 超高升水 (v7.7) |
 | | > 10% | -1 | High contango | 高升水 |
 | **VIX Basis** | Panic level | +2 | Spot premium spike | 现货溢价激增 |
 | | Calm level | -1 | Normal/discount | 正常/折价 |
-| **SKEW** | High tail risk | -3 | Elevated crash risk | 尾部风险升高 |
-| | Low tail risk | +1 | Reduced crash risk | 尾部风险降低 |
+| **SKEW** | High tail risk | **-2** | Elevated crash risk | 尾部风险升高 (v7.7) |
+| | Low tail risk | **+2** | Reduced crash risk | 尾部风险降低 (v7.7) |
 | **P/C Ratio** | > 1.20 | +2 | Extreme fear | 极度恐慌 |
 | | < 0.70 | -2 | Extreme greed | 极度贪婪 |
 
@@ -506,7 +508,29 @@ Total Score =
 
 ## 📋 Changelog | 更新日志
 
-### v7.6 (2025-12-26 | Current | 当前版本)
+### v7.7 (2025-12-26 | Current | 当前版本)
+
+**⚖️ Weight Optimization | 权重优化**
+- **Z-Score**: ±4 → ±3 (Reduced single-factor dominance | 降低单因子主导)
+- **Contango**: Added deep backwardation (<-5%) +3, very high contango (>15%) -2
+  新增深度 Backwardation +3 分，超高 Contango -2 分
+- **SKEW**: Symmetrized -3/+1 → ±2 (Balanced risk assessment | 平衡风险评估)
+
+**🎚️ Graduated Filtering | 分级过滤**
+- **High Vol BUY DIP**: Changed from binary disable to graduated threshold
+  高波动期 BUY DIP：从完全禁用改为分级门槛
+  - Requires Score ≥ 4 + Z Momentum falling | 需要 Score≥4 + 动量确认
+  - Status: `WAIT: Need ≥4` when threshold not met | 未达标显示门槛要求
+- **Low Vol SELL/HEDGE**: Changed from binary disable to graduated threshold
+  低波动期 SELL/HEDGE：从完全禁用改为分级门槛
+  - Requires Score ≤ -3 + Z Momentum rising | 需要 Score≤-3 + 动量确认
+  - Status: `HOLD: Need ≤-3` when threshold not met | 未达标显示门槛要求
+
+**🐻 Bear Market Display | 熊市显示优化**
+- Changed `NO TRADE (Trend)` → `WAIT (Bear Mkt)` with 🐻 emoji
+  熊市提示从 NO TRADE 改为 WAIT，使用熊市表情
+
+### v7.6 (2025-12-26)
 
 **📱 Mobile Mode | 移动模式**
 - **3-Row Compact Display**: 紧凑3行显示，信息分层清晰
@@ -556,8 +580,8 @@ Total Score =
 
 ### v7.3 Enhanced
 - 🎯 **Enhanced Signal Filtering | 增强信号过滤**: BUY DIP and SELL/HEDGE with VIX Regime + Momentum dual filter
-  - 🟡 BUY DIP: Disabled in HIGH VOL, requires Z Momentum falling | 高波动期不触发，需 Z 动量下降
-  - 🟠 SELL/HEDGE: Disabled in LOW VOL, requires Z Momentum rising | 低波动期不触发，需 Z 动量上升
+  - 🟡 BUY DIP: HIGH VOL requires higher threshold (v7.7: Score≥4) | 高波动期需更高门槛
+  - 🟠 SELL/HEDGE: LOW VOL requires stronger signal (v7.7: Score≤-3) | 低波动期需更强信号
 - ⏱️ **Signal Cooldown | 信号冷却**: Signal Display Cooldown setting prevents frequent same-type signals | 信号冷却设置避免同类信号频繁显示
 - 💡 **Dashboard Status Info | 仪表盘状态提示**: Explicit `WAIT` (for Buy side) and `HOLD` (for Sell side) status when signals are filtered | 信号被过滤时明确显示 WAIT/HOLD 状态
 - 🔧 **KAMA Implementation | KAMA 实现**: Custom `calc_kama()` function for cross-environment compatibility | 自定义 KAMA 函数确保跨环境兼容
