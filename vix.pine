@@ -38,6 +38,14 @@ indicator("VIX Term Structure Pro [v7.5]", overlay=false, max_lines_count=500)
 // ║ 📈 VVIX 自适应    │ Fixed / Percentile / Z-Score 三种阈值模式          ║
 // ╚════════════════════════════════════════════════════════════════════════════╝
 
+// ========== 辅助函数定义 ==========
+// 格式化带符号的数字 (Pine Script 不支持 "+#.#;-#.#" 格式)
+format_signed_1(val) =>
+    (val >= 0 ? "+" : "") + str.tostring(val, "#.#")
+
+format_signed_int(val) =>
+    (val >= 0 ? "+" : "") + str.tostring(val, "#")
+
 // ========== 评分函数定义 (模块化) ==========
 calc_z_score_points(z_val, mid, strong) =>
     z_val < -strong ? 4 : z_val < -mid ? 2 : z_val > strong ? -4 : z_val > mid ? -2 : 0
@@ -787,7 +795,7 @@ if show_table and barstate.islast
 
     // Row 9: VIX Characteristics (v7.5 新增 - Compact模式汇总)
     if show_vix_characteristics and is_compact
-        char_summary = str.tostring(vix_characteristics_total, "+#;-#;0") + " BD:" + str.tostring(backwardation_days) + "D " + (is_bullish_divergence ? "🟢" : is_bearish_divergence ? "🔴" : "→")
+        char_summary = format_signed_int(vix_characteristics_total) + " BD:" + str.tostring(backwardation_days) + "D " + (is_bullish_divergence ? "🟢" : is_bearish_divergence ? "🔴" : "→")
         char_color = vix_characteristics_total >= 3 ? color.lime : vix_characteristics_total <= -2 ? color.red : color.silver
         table.cell(panel, 0, 9, "VIX Chars", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
         table.cell(panel, 1, 9, char_summary, bgcolor=bg_cell, text_color=char_color, text_size=t_size)
@@ -799,11 +807,11 @@ if show_table and barstate.islast
         // Avg Return 分级显示 (v7.1 新增)
         if show_signal_stats
             // 第一行：CRASH 和 STRONG
-            avg_return_txt1 = "🚨" + str.tostring(crash_return_bars) + "D:" + str.tostring(crash_buy_avg_return, "+#.#;-#.#") + "% 🟢" + str.tostring(strong_return_bars) + "D:" + str.tostring(strong_buy_avg_return, "+#.#;-#.#") + "%"
+            avg_return_txt1 = "🚨" + str.tostring(crash_return_bars) + "D:" + format_signed_1(crash_buy_avg_return) + "% 🟢" + str.tostring(strong_return_bars) + "D:" + format_signed_1(strong_buy_avg_return) + "%"
             table.cell(panel, 0, base_row, "Avg Return", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
             table.cell(panel, 1, base_row, avg_return_txt1, bgcolor=bg_cell, text_color=color.white, text_size=t_size)
             // 第二行：BUY DIP
-            avg_return_txt2 = "🟡" + str.tostring(dip_return_bars) + "D:" + str.tostring(buy_dip_avg_return, "+#.#;-#.#") + "%"
+            avg_return_txt2 = "🟡" + str.tostring(dip_return_bars) + "D:" + format_signed_1(buy_dip_avg_return) + "%"
             table.cell(panel, 0, base_row + 1, "", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
             table.cell(panel, 1, base_row + 1, avg_return_txt2, bgcolor=bg_cell, text_color=color.white, text_size=t_size)
             base_row += 2
@@ -842,7 +850,7 @@ if show_table and barstate.islast
         
         // Max Profit Stats (v7.1 新增 - 可选)
         if use_max_profit_stats
-            max_ret_txt = "🚨" + str.tostring(max_profit_crash_ret, "+#.#") + "% 🟢" + str.tostring(max_profit_strong_ret, "+#.#") + "% 🟡" + str.tostring(max_profit_dip_ret, "+#.#") + "%"
+            max_ret_txt = "🚨" + format_signed_1(max_profit_crash_ret) + "% 🟢" + format_signed_1(max_profit_strong_ret) + "% 🟡" + format_signed_1(max_profit_dip_ret) + "%"
             table.cell(panel, 0, base_row + 4 + vvix_offset, "Max Profit", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
             table.cell(panel, 1, base_row + 4 + vvix_offset, max_ret_txt, bgcolor=bg_cell, text_color=color.new(color.aqua, 20), text_size=t_size)
 
@@ -852,7 +860,7 @@ if show_table and barstate.islast
             char_base_row = base_row + 4 + vvix_offset + max_profit_offset
 
             // Mean Reversion
-            mr_txt = str.tostring(vix_mean_distance, "+#.#;-#.#;0.0") + "σ (" + str.tostring(mean_reversion_score, "+#;-#;0") + ")"
+            mr_txt = format_signed_1(vix_mean_distance) + "σ (" + format_signed_int(mean_reversion_score) + ")"
             mr_col = vix_mean_distance > 2 ? color.lime : vix_mean_distance < -1 ? color.red : color.silver
             table.cell(panel, 0, char_base_row, "Mean Revert", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
             table.cell(panel, 1, char_base_row, mr_txt, bgcolor=bg_cell, text_color=mr_col, text_size=t_size)
