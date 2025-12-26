@@ -1,8 +1,15 @@
 //@version=6
-indicator("VIX Term Structure Pro [v7.6]", overlay=false, max_lines_count=500)
+indicator("VIX Term Structure Pro [v7.7]", overlay=false, max_lines_count=500)
 
 // ╔════════════════════════════════════════════════════════════════════════════╗
-// ║                    VIX Term Structure Pro v7.6 使用指南                      ║
+// ║                    VIX Term Structure Pro v7.7 使用指南                      ║
+// ╠════════════════════════════════════════════════════════════════════════════╣
+// ║ 🆕 v7.7 更新：权重优化 + 分级过滤                                            ║
+// ║   • Z-Score 权重: ±4 → ±3 (降低单因子主导)                                   ║
+// ║   • Contango: 深度Backwardation(<-5%) +3分, 超高Contango(>15%) -2分          ║
+// ║   • SKEW: 对称化 (-3/+1 → ±2)                                               ║
+// ║   • 高波动期 BUY DIP: 需 Score≥4 + 动量确认 (分级过滤)                       ║
+// ║   • 低波动期 SELL/HEDGE: 需 Score≤-3 + 动量确认 (分级过滤)                   ║
 // ╠════════════════════════════════════════════════════════════════════════════╣
 // ║ 🎯 信号含义 (Signal Meanings)                                               ║
 // ║----------------------------------------------------------------------------║
@@ -39,16 +46,16 @@ format_signed_int(val) =>
 
 // ========== 评分函数定义 (模块化) ==========
 calc_z_score_points(z_val, mid, strong) =>
-    z_val < -strong ? 4 : z_val < -mid ? 2 : z_val > strong ? -4 : z_val > mid ? -2 : 0
+    z_val < -strong ? 3 : z_val < -mid ? 2 : z_val > strong ? -3 : z_val > mid ? -2 : 0
 
 calc_contango_points(contango) =>
-    contango < 0 ? 2 : contango > 10 ? -1 : 0
+    contango < -5 ? 3 : contango < 0 ? 2 : contango > 15 ? -2 : contango > 10 ? -1 : 0
 
 calc_basis_points(is_panic, is_calm) =>
     is_panic ? 2 : is_calm ? -1 : 0
 
 calc_skew_points(is_high, is_low) =>
-    is_high ? -3 : is_low ? 1 : 0
+    is_high ? -2 : is_low ? 2 : 0
 
 calc_pcr_points(pcr_val) =>
     na(pcr_val) ? 0 : pcr_val > 1.20 ? 2 : pcr_val < 0.70 ? -2 : 0
@@ -525,22 +532,28 @@ is_sell_hedge_base = use_confirmed_signals ? (is_sell_hedge_raw and barstate.isc
 var int last_sell_hedge_bar = 0
 var int last_buy_dip_bar = 0
 
-// ===== v7.3 新增：增强版 sell_hedge/buy_dip 信号过滤 =====
-// sell_hedge 增强条件：
-// 1. VIX Regime 不是 LOW VOL（低波动期不需要对冲）
+// ===== v7.7 优化：分级过滤替代二元过滤 =====
+// 内部阈值常量（不暴露给用户）
+HIGH_VOL_BUY_DIP_THRESHOLD = 4      // 高波动期 BUY DIP 需要更高分数
+LOW_VOL_SELL_HEDGE_THRESHOLD = -3   // 低波动期 SELL/HEDGE 需要更强信号
+
+// sell_hedge 增强条件 (v7.7 优化)：
+// 1. VIX Regime 分级过滤：LOW VOL 时需 Score≤-3 + 动量确认
 // 2. Z Momentum 上升（贪婪加剧）或 Weekly 卖出对齐
 // 3. 满足信号冷却间隔
 is_sell_hedge_momentum_ok = z_momentum_bearish or (use_mtf_confirm and is_weekly_sell_aligned) or not use_momentum_confirm
 is_sell_hedge_cooldown_ok = bar_index - last_sell_hedge_bar > signal_display_cooldown
-is_sell_hedge = is_sell_hedge_base and vix_regime != 1 and is_sell_hedge_momentum_ok and is_sell_hedge_cooldown_ok
+is_sell_hedge_low_vol_ok = vix_regime == 1 ? (score <= LOW_VOL_SELL_HEDGE_THRESHOLD and z_momentum_bearish) : true
+is_sell_hedge = is_sell_hedge_base and is_sell_hedge_low_vol_ok and is_sell_hedge_momentum_ok and is_sell_hedge_cooldown_ok
 
-// buy_dip 增强条件：
-// 1. VIX Regime 不是 HIGH VOL（高波动期等待更强信号）
+// buy_dip 增强条件 (v7.7 优化)：
+// 1. VIX Regime 分级过滤：HIGH VOL 时需 Score≥4 + 动量确认
 // 2. Z Momentum 下降（恐慌加剧）或 Weekly 买入对齐
 // 3. 满足信号冷却间隔
 is_buy_dip_momentum_ok = z_momentum_bullish or (use_mtf_confirm and is_weekly_buy_aligned) or not use_momentum_confirm
 is_buy_dip_cooldown_ok = bar_index - last_buy_dip_bar > signal_display_cooldown
-is_buy_dip = is_buy_dip_base and vix_regime != 3 and is_buy_dip_momentum_ok and is_buy_dip_cooldown_ok
+is_buy_dip_high_vol_ok = vix_regime == 3 ? (score >= HIGH_VOL_BUY_DIP_THRESHOLD and z_momentum_bullish) : true
+is_buy_dip = is_buy_dip_base and is_buy_dip_high_vol_ok and is_buy_dip_momentum_ok and is_buy_dip_cooldown_ok
 
 // 更新冷却追踪
 if is_sell_hedge
@@ -654,12 +667,13 @@ else if score >= min_score_buy
     mobile_bias_txt := "BUY DIP"
     mobile_bias_emoji := "🟡"
     mobile_bias_col := color.lime
-    if vix_regime == 3
+    // v7.7 分级过滤：高波动期需要更高门槛
+    if vix_regime == 3 and not is_buy_dip_high_vol_ok
         signal_txt := "WAIT (High Vol)"
         signal_col := color.gray
         signal_emoji := "✋"
         is_filtered := true
-        mobile_status_txt := "WAIT: High Vol"
+        mobile_status_txt := score < HIGH_VOL_BUY_DIP_THRESHOLD ? "WAIT: Need ≥4" : "WAIT: Momentum"
         mobile_status_emoji := "✋"
         mobile_status_col := color.yellow
     else if use_momentum_confirm and not is_buy_dip_momentum_ok
@@ -692,12 +706,13 @@ else if score <= -2
     mobile_bias_txt := "SELL/HEDGE"
     mobile_bias_emoji := "🟠"
     mobile_bias_col := color.orange
-    if vix_regime == 1
+    // v7.7 分级过滤：低波动期需要更强信号
+    if vix_regime == 1 and not is_sell_hedge_low_vol_ok
         signal_txt := "HOLD (Low Vol)"
         signal_col := color.gray
         signal_emoji := "☕"
         is_filtered := true
-        mobile_status_txt := "HOLD: Low Vol"
+        mobile_status_txt := score > LOW_VOL_SELL_HEDGE_THRESHOLD ? "HOLD: Need ≤-3" : "HOLD: Momentum"
         mobile_status_emoji := "☕"
         mobile_status_col := color.orange
     else if use_momentum_confirm and not is_sell_hedge_momentum_ok
@@ -720,14 +735,14 @@ else
     mobile_bias_emoji := "⚪"
     mobile_bias_col := color.gray
 
-// 熊市特殊提示
+// 熊市特殊提示 (v7.7 优化文案)
 if use_trend_filter and not is_bull_market and score >= min_score_buy and score < 5
-    signal_txt := "NO TRADE (Trend)"
+    signal_txt := "WAIT (Bear Mkt)"
     signal_col := color.gray
-    signal_emoji := "🚫"
+    signal_emoji := "🐻"
     is_filtered := true
-    mobile_status_txt := "NO TRADE: Trend"
-    mobile_status_emoji := "🚫"
+    mobile_status_txt := "WAIT: Bear Market"
+    mobile_status_emoji := "🐻"
     mobile_status_col := color.gray
 
 // ========== 7. 绘图 ==========
