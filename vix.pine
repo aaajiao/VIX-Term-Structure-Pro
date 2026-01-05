@@ -1,8 +1,8 @@
 //@version=6
-indicator("VIX Term Structure Pro [v7.7]", overlay=false, max_lines_count=500, calc_bars_count=1000)
+indicator("VIX Term Structure Pro [v7.8]", overlay=false, max_lines_count=500, calc_bars_count=1000)
 
 // ╔════════════════════════════════════════════════════════════════════════════╗
-// ║                    VIX Term Structure Pro v7.7 使用指南                      ║
+// ║                    VIX Term Structure Pro v7.8 使用指南                      ║
 // ╠════════════════════════════════════════════════════════════════════════════╣
 // ║ 📊 仪表盘指标解读                                                           ║
 // ║----------------------------------------------------------------------------║
@@ -21,12 +21,12 @@ indicator("VIX Term Structure Pro [v7.7]", overlay=false, max_lines_count=500, c
 // ║ HOLD (持有)    │ 🟠 卖出侧。评分达标但被过滤（如低波动或动量未确认）。        ║
 // ║                │ 含义：不要急于卖出/对冲，继续持有仓位。                      ║
 // ╠════════════════════════════════════════════════════════════════════════════╣
-// ║ 📌 v7.7 新增功能 (Trading Safety)                                           ║
+// ║ 📌 v7.8 新增功能 (Dashboard Redesign)                                       ║
 // ║----------------------------------------------------------------------------║
+// ║ 🎨 全新仪表盘    │ Mobile/Full 双模式，深色主题，分组布局                    ║
+// ║ 📊 进度条显示    │ Score 可视化进度条 (█░)                                  ║
 // ║ 🛡️ 实盘安全模式  │ 默认开启，无重绘 (lookahead_off)                         ║
 // ║ ⬆️ 跨K线升级报警  │ 信号等级升级时触发新警报 (DIP→STRONG→CRASH)              ║
-// ║ 📊 滚动窗口统计  │ 使用 math.sum() 替代累积计数，统计更准确                  ║
-// ║ 🔗 统一 lookahead │ VIX/趋势均线/周线确认统一受控，回测/实盘逻辑一致         ║
 // ╚════════════════════════════════════════════════════════════════════════════╝
 
 // ========== 评分函数定义 (模块化) ==========
@@ -47,6 +47,16 @@ calc_pcr_points(pcr_val) =>
 
 calc_vvix_points(vvix_val, use_vvix) =>
     not use_vvix or na(vvix_val) ? 0 : vvix_val > 130 ? 1 : vvix_val < 80 ? -1 : 0
+
+// ========== v7.8: 进度条生成函数 ==========
+// 生成 Score 进度条 (-10 到 +10 范围，10格)
+f_score_bar(score_val) =>
+    clamped = math.max(-10.0, math.min(10.0, score_val))
+    filled = math.round((clamped + 10.0) / 20.0 * 10.0)
+    string bar = ""
+    for i = 0 to 9
+        bar := bar + (i < filled ? "█" : "░")
+    bar
 
 // ========== KAMA 自定义实现 (Kaufman Adaptive Moving Average) ==========
 // 由于 ta.kama() 在某些环境不可用，手动实现
@@ -114,21 +124,19 @@ mid_line_color = input.color(color.yellow, "±1 Line Color", group=grp_chart, to
 mid_line_style = input.string("Dashed", "±1 Line Style", options=["Solid", "Dashed", "Dotted"], group=grp_chart, tooltip="±1线样式 ±1 line style")
 
 // ────────────────────────────────────────────────────────────────────────────
-// 📋 仪表盘设置 (Dashboard)
+// 📋 仪表盘设置 (Dashboard) - v7.8 重新设计
 // ────────────────────────────────────────────────────────────────────────────
 grp_dashboard = "📋 Dashboard"
 show_table  = input.bool(true, "Show Dashboard", group=grp_dashboard, tooltip="显示仪表盘 Show dashboard panel")
-panel_mode  = input.string("Compact", "Dashboard Mode", options=["Compact", "Full", "Mobile"], group=grp_dashboard, tooltip="Compact: 精简8行 Essential 8 rows\nFull: 完整12+行 Full 12+ rows\nMobile: 极简2行 Minimal 2 rows")
+panel_mode  = input.string("Full", "Dashboard Mode", options=["Full", "Mobile"], group=grp_dashboard, tooltip="Full: 完整分组布局 Grouped layout with progress bar\nMobile: 极简2行 Minimal 2 rows for mobile")
 table_position = input.string("Top Right", "Dashboard Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left", "Top Center", "Bottom Center"], group=grp_dashboard, tooltip="仪表盘位置 Dashboard position")
 table_size  = input.string("Normal", "Dashboard Text Size", options=["Small", "Normal", "Large"], group=grp_dashboard, tooltip="文字大小 Text size")
-bg_transp   = input.int(70, "Dashboard Transparency", minval=0, maxval=100, group=grp_dashboard, tooltip="背景透明度 Background transparency\n0=不透明 Opaque / 100=全透明 Transparent")
 
 // ────────────────────────────────────────────────────────────────────────────
 // 📊 统计与警报 (Statistics & Alerts)
 // ────────────────────────────────────────────────────────────────────────────
 grp_stats = "📊 Statistics & Alerts"
 show_signal_stats = input.bool(true, "Show Signal Statistics", group=grp_stats, tooltip="显示信号统计 Show signal statistics")
-use_max_profit_stats = input.bool(false, "📈 Show Max Profit Stats", group=grp_stats, tooltip="OFF: 点对点收益 Point-to-point return\nON: 最高收益 Max profit (计算更复杂 more complex)")
 stats_lookback_years = input.int(3, "Stats Lookback (Years)", minval=1, maxval=20, group=grp_stats, tooltip="统计回溯年数 Stats lookback years\n仅统计此范围内信号 Only count signals within range")
 crash_return_bars = input.int(40, "🚨 CRASH Return Period (Bars)", minval=10, maxval=60, group=grp_stats, tooltip="CRASH信号收益周期 CRASH return period\n约2个月 ~2 months")
 strong_return_bars = input.int(20, "🟢 STRONG Return Period (Bars)", minval=10, maxval=40, group=grp_stats, tooltip="STRONG信号收益周期 STRONG return period\n约1个月 ~1 month")
@@ -183,7 +191,6 @@ thresh_mid = sens_mode == "High (Scalping)" ? 1.0 : sens_mode == "Normal (Swing)
 min_score_buy = sens_mode == "High (Scalping)" ? 2 : sens_mode == "Normal (Swing)" ? 3 : 4
 
 t_size = table_size == "Small" ? size.small : table_size == "Large" ? size.large : size.normal
-is_compact = panel_mode == "Compact"
 is_mobile = panel_mode == "Mobile"
 
 // ========== 2. 数据获取 ==========
@@ -283,8 +290,9 @@ is_bull_market = is_primary_bull
 
 // VIX Regime 判断
 vix_regime = vix < vix_low_thresh ? 1 : vix > vix_high_thresh ? 3 : 2
-vix_regime_txt = vix_regime == 1 ? "LOW VOL" : vix_regime == 3 ? "HIGH VOL" : "NORMAL"
+vix_regime_txt = vix_regime == 1 ? "LOW" : vix_regime == 3 ? "HIGH" : "NORM"
 vix_regime_color = vix_regime == 1 ? color.lime : vix_regime == 3 ? color.red : color.silver
+vix_regime_emoji = vix_regime == 1 ? "🟢" : vix_regime == 3 ? "🔴" : "⚪"
 
 term_spread = valid_data ? (vx2 - vx1) : 0.0
 contango_pct = valid_data and vx1 != 0 ? ((vx2 / vx1) - 1) * 100 : 0.0
@@ -493,51 +501,51 @@ if score >= 6
     signal_col := color.new(#00FF00, 0)
     signal_emoji := "🚨"
 else if score >= 5
-    signal_txt := "STRONG BUY"
+    signal_txt := "🟢 STRONG BUY"
     signal_col := color.green
     signal_emoji := "🟢"
 else if score >= min_score_buy
     if vix_regime == 3
-        signal_txt := "WAIT (High Vol)"
+        signal_txt := "✋ WAIT (Vol)"
         signal_col := color.gray
         signal_emoji := "✋"
     else if use_momentum_confirm and not is_buy_dip_momentum_ok
-        signal_txt := "WAIT (Momentum)"
+        signal_txt := "✋ WAIT (Mom)"
         signal_col := color.gray
         signal_emoji := "✋"
     else
-        signal_txt := "BUY DIP"
+        signal_txt := "🟡 BUY DIP"
         signal_col := color.lime
         signal_emoji := "🟡"
 else if score <= -6
-    signal_txt := "🔥 EUPHORIA SELL"
+    signal_txt := "🔥 EUPHORIA"
     signal_col := color.new(#FF0000, 0)
     signal_emoji := "🔥"
 else if score <= -5
-    signal_txt := "STRONG SELL"
+    signal_txt := "🔴 STRONG SELL"
     signal_col := color.red
     signal_emoji := "🔴"
 else if score <= -2
     if vix_regime == 1
-        signal_txt := "HOLD (Low Vol)"
+        signal_txt := "☕ HOLD (Vol)"
         signal_col := color.gray
         signal_emoji := "☕"
     else if use_momentum_confirm and not is_sell_hedge_momentum_ok
-        signal_txt := "HOLD (Momentum)"
+        signal_txt := "✋ HOLD (Mom)"
         signal_col := color.gray
         signal_emoji := "✋"
     else
-        signal_txt := "SELL/HEDGE"
+        signal_txt := "🟠 SELL/HEDGE"
         signal_col := color.orange
         signal_emoji := "🟠"
 else
-    signal_txt := "WAIT / HOLD"
+    signal_txt := "⏸ NEUTRAL"
     signal_col := color.gray
-    signal_emoji := "⚪"
+    signal_emoji := "⏸"
 
 // 熊市特殊提示
 if use_trend_filter and not is_bull_market and score >= min_score_buy and score < 5
-    signal_txt := "NO TRADE (Trend)"
+    signal_txt := "🚫 NO TRADE"
     signal_col := color.gray
     signal_emoji := "🚫"
 
@@ -570,155 +578,125 @@ plotshape(is_euphoria_sell ? thresh_strong + 0.3 : na, title="Euphoria Sell Sign
 plotshape(is_strong_sell ? thresh_strong + 0.3 : na, title="Strong Sell Signal", location=location.absolute, style=shape.labeldown, color=color.new(color.red, 20), text="🔴", textcolor=color.white, size=size.tiny)
 plotshape(is_sell_hedge ? thresh_strong + 0.3 : na, title="Sell/Hedge Signal", location=location.absolute, style=shape.labeldown, color=color.new(color.orange, 20), text="🟠", textcolor=color.white, size=size.tiny)
 
-// ========== 9. 增强版仪表盘 (Compact/Full 模式) ==========
-// 仪表盘位置转换函数 (v7.1 新增)
+// ========== 9. 重新设计的仪表盘 (v7.8) ==========
+// 仪表盘位置转换函数
 get_table_pos(pos) => pos == "Top Left" ? position.top_left : pos == "Bottom Right" ? position.bottom_right : pos == "Bottom Left" ? position.bottom_left : pos == "Top Center" ? position.top_center : pos == "Bottom Center" ? position.bottom_center : position.top_right
 
-// Max Profit Stats 计算 (提取到外部以避免警告)
-max_profit_crash_price = ta.highest(spx_close, crash_return_bars)
-max_profit_strong_price = ta.highest(spx_close, strong_return_bars)
-max_profit_dip_price = ta.highest(spx_close, dip_return_bars)
-max_profit_crash_ret = not na(spx_close[crash_return_bars]) ? (max_profit_crash_price - spx_close[crash_return_bars]) / spx_close[crash_return_bars] * 100 : 0.0
-max_profit_strong_ret = not na(spx_close[strong_return_bars]) ? (max_profit_strong_price - spx_close[strong_return_bars]) / spx_close[strong_return_bars] * 100 : 0.0
-max_profit_dip_ret = not na(spx_close[dip_return_bars]) ? (max_profit_dip_price - spx_close[dip_return_bars]) / spx_close[dip_return_bars] * 100 : 0.0
+// v7.8: 深色主题配色
+c_header = color.rgb(26, 26, 46)       // #1a1a2e 标题栏深蓝黑
+c_group  = color.rgb(22, 33, 62)       // #16213e 分组标题次深蓝
+c_row    = color.rgb(15, 15, 26, 30)   // #0f0f1a 普通行近黑(带透明)
+c_buy_bg = color.rgb(10, 61, 46, 50)   // #0a3d2e 买入信号深绿背景
+c_sell_bg = color.rgb(61, 10, 10, 50)  // #3d0a0a 卖出信号深红背景
+c_label  = color.rgb(136, 136, 136)    // #888888 标签灰色
+c_value  = color.rgb(255, 255, 255)    // #ffffff 数值白色
 
-// v7.7: 仅在预览模式（非实盘安全模式）时显示重绘警告
-// Trading Safe Mode ON (默认) = 无重绘，无需警告
-// Trading Safe Mode OFF = 预览模式，需要警告
+// 根据信号动态选择背景色
+signal_bg = score >= 5 ? c_buy_bg : score <= -5 ? c_sell_bg : c_row
+
+// v7.8: 仅在预览模式（非实盘安全模式）时显示重绘警告
 is_preview_mode = not trading_safe_mode and not backtest_mode
-warning_row_count = is_preview_mode ? 1 : 0
-// Max Profit Stats 额外行数
-max_profit_row_count = use_max_profit_stats and not is_compact ? 1 : 0
-// Compact: 9 rows, Full: 15-17 rows max (depending on VVIX and Max Profit)
-panel_rows = is_mobile ? 2 : ((is_compact ? 9 : (use_vvix ? 16 : 15)) + warning_row_count + max_profit_row_count)
-var table panel = table.new(get_table_pos(table_position), 2, panel_rows, border_width=0, frame_color=color.new(color.gray, 100), border_color=color.new(color.gray, 100))
+
+// Mobile: 2行, Full: 13行
+panel_rows = is_mobile ? 2 : 13
+var table panel = table.new(get_table_pos(table_position), 2, panel_rows, border_width=0)
 
 if show_table and barstate.islast
-    transp_header = math.max(0, bg_transp - 20)
-    transp_cell   = bg_transp
-    
-    bg_header = color.new(color.black, transp_header) 
-    bg_cell   = color.new(color.black, transp_cell)
-    txt_lbl   = color.new(color.white, 10)
-
-    // ===== Mobile Mode (极简2行，无Header) =====
     if is_mobile
-        // Row 0: Overall Bias
-        table.cell(panel, 0, 0, "Bias", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-        table.cell(panel, 1, 0, signal_txt, bgcolor=bg_cell, text_color=signal_col, text_size=t_size)
+        // ═══════════════════════════════════════════════════════════════════
+        // Mobile Mode: 极简2行
+        // ═══════════════════════════════════════════════════════════════════
+        // Row 0: 信号 + 分数
+        table.cell(panel, 0, 0, signal_txt, bgcolor=signal_bg, text_color=signal_col, text_halign=text.align_left, text_size=t_size)
+        table.cell(panel, 1, 0, str.tostring(score, "+#.#;-#.#"), bgcolor=signal_bg, text_color=signal_col, text_halign=text.align_right, text_size=t_size)
         
-        // Row 1: AI Score + VIX Regime
-        score_vix_txt = str.tostring(score, "+#.#;-#.#") + " (" + vix_regime_txt + ")"
-        score_vix_col = score >= 5 ? color.green : score >= min_score_buy ? color.lime : score <= -5 ? color.red : score <= -2 ? color.orange : color.silver
-        table.cell(panel, 0, 1, "Score", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-        table.cell(panel, 1, 1, score_vix_txt, bgcolor=bg_cell, text_color=score_vix_col, text_size=t_size)
+        // Row 1: VIX状态 + 数值
+        vix_display = vix_regime_emoji + " " + vix_regime_txt
+        vix_val_display = str.tostring(vix, "#.#")
+        table.cell(panel, 0, 1, vix_display, bgcolor=c_row, text_color=vix_regime_color, text_halign=text.align_left, text_size=t_size)
+        table.cell(panel, 1, 1, vix_val_display, bgcolor=c_row, text_color=vix_regime_color, text_halign=text.align_right, text_size=t_size)
     else
-        // ===== Compact / Full Mode =====
-        mode_display = sens_mode == "High (Scalping)" ? "(High)" : sens_mode == "Normal (Swing)" ? "(Normal)" : "(Trend Guard)"
-        table.cell(panel, 0, 0, "AI Signal " + mode_display, bgcolor=bg_header, text_color=color.white, text_size=t_size, width=12)
-        table.cell(panel, 1, 0, is_compact ? "Compact" : "Full", bgcolor=bg_header, text_color=color.white, text_size=t_size, width=9)
+        // ═══════════════════════════════════════════════════════════════════
+        // Full Mode: 分组布局 + 进度条
+        // ═══════════════════════════════════════════════════════════════════
         
-        // Row 1: Overall Bias
-        table.cell(panel, 0, 1, "Overall Bias", bgcolor=bg_cell, text_color=color.white, text_halign=text.align_left, text_size=t_size)
-        table.cell(panel, 1, 1, signal_txt, bgcolor=bg_cell, text_color=signal_col, text_size=t_size)
-
-        // Row 2: AI Score
-        score_col = score >= 5 ? color.green : score >= min_score_buy ? color.lime : score <= -5 ? color.red : score <= -2 ? color.orange : color.silver
-        table.cell(panel, 0, 2, "AI Score", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-        table.cell(panel, 1, 2, str.tostring(score, "#.#"), bgcolor=bg_cell, text_color=score_col, text_size=t_size)
-
-        // Row 3: Market Trend (双指数合并显示)
-        table.cell(panel, 0, 3, "Market Trend", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-        table.cell(panel, 1, 3, trend_status_txt, bgcolor=bg_cell, text_color=trend_color, text_size=t_size)
-
-        // Row 4: VIX Regime
-        table.cell(panel, 0, 4, "VIX Regime", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-        table.cell(panel, 1, 4, vix_regime_txt + " (" + str.tostring(vix, "#.#") + ")", bgcolor=bg_cell, text_color=vix_regime_color, text_size=t_size)
-
-        // Row 5: Term Struct Z
-        z_col_t = z > thresh_strong ? color.new(color.blue, 20) : z < -thresh_strong ? color.new(color.red, 20) : color.silver
-        table.cell(panel, 0, 5, "Term Struct Z", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-        table.cell(panel, 1, 5, str.tostring(z, "#.##"), bgcolor=bg_cell, text_color=z_col_t, text_size=t_size)
-
-        // Row 6: Vol Status
-        vol_ratio = not na(vx1_vol) ? vx1_vol / vol_ma : 0
-        vol_txt = vol_ratio > 2.5 ? "PANIC SPIKE" : vol_ratio > 1.5 ? "High Activity" : "Normal"
-        vol_col_txt = vol_ratio > 2.5 ? color.yellow : vol_ratio > 1.5 ? color.aqua : color.silver
-        table.cell(panel, 0, 6, "Vol Status", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-        table.cell(panel, 1, 6, vol_txt, bgcolor=bg_cell, text_color=vol_col_txt, text_size=t_size)
-
-        // Row 7: Z Momentum
-        z_mom_txt = z_momentum_bullish ? "↓ Falling" : z_momentum_bearish ? "↑ Rising" : "→ Flat"
-        z_mom_col = z_momentum_bullish ? color.lime : z_momentum_bearish ? color.orange : color.silver
-        table.cell(panel, 0, 7, "Z Momentum", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-        table.cell(panel, 1, 7, z_mom_txt, bgcolor=bg_cell, text_color=z_mom_col, text_size=t_size)
-
-        // Row 8: Signal Stats (v7.0 新增)
+        // --- Row 0: 标题栏 ---
+        mode_tag = is_preview_mode ? "⚠️PREVIEW" : "🛡️SAFE"
+        table.cell(panel, 0, 0, "VIX Term Pro", bgcolor=c_header, text_color=c_value, text_halign=text.align_left, text_size=t_size)
+        table.cell(panel, 1, 0, mode_tag, bgcolor=c_header, text_color=is_preview_mode ? color.orange : color.lime, text_halign=text.align_right, text_size=t_size)
+        
+        // --- Row 1: 信号（动态高亮背景）---
+        table.cell(panel, 0, 1, signal_txt, bgcolor=signal_bg, text_color=signal_col, text_halign=text.align_left, text_size=t_size)
+        table.cell(panel, 1, 1, "", bgcolor=signal_bg, text_color=c_value, text_size=t_size)
+        
+        // --- Row 2: 进度条 + 分数 ---
+        score_bar = f_score_bar(score)
+        score_display = str.tostring(score, "+#.#;-#.#")
+        bar_color = score >= 5 ? color.lime : score <= -5 ? color.red : color.silver
+        table.cell(panel, 0, 2, score_bar, bgcolor=c_row, text_color=bar_color, text_halign=text.align_left, text_size=t_size)
+        table.cell(panel, 1, 2, score_display, bgcolor=c_row, text_color=bar_color, text_halign=text.align_right, text_size=t_size)
+        
+        // --- Row 3: MARKET 分组标题 ---
+        table.cell(panel, 0, 3, "MARKET", bgcolor=c_group, text_color=c_label, text_halign=text.align_left, text_size=size.tiny)
+        table.cell(panel, 1, 3, "", bgcolor=c_group, text_color=c_label, text_size=size.tiny)
+        
+        // --- Row 4: 三指数趋势 ---
+        trend_compact = spx_emoji + " " + ndx_emoji + " " + rut_emoji
+        table.cell(panel, 0, 4, trend_compact, bgcolor=c_row, text_color=trend_color, text_halign=text.align_left, text_size=t_size)
+        table.cell(panel, 1, 4, "SPX NDX RUT", bgcolor=c_row, text_color=c_label, text_halign=text.align_right, text_size=size.tiny)
+        
+        // --- Row 5: VIX Regime ---
+        vix_full_display = vix_regime_emoji + " " + vix_regime_txt
+        table.cell(panel, 0, 5, vix_full_display, bgcolor=c_row, text_color=vix_regime_color, text_halign=text.align_left, text_size=t_size)
+        table.cell(panel, 1, 5, str.tostring(vix, "#.#"), bgcolor=c_row, text_color=vix_regime_color, text_halign=text.align_right, text_size=t_size)
+        
+        // --- Row 6: Volume Status ---
+        vol_ratio = not na(vx1_vol) and vol_ma > 0 ? vx1_vol / vol_ma : 0
+        vol_txt = is_vol_spike ? "🔥 SPIKE" : is_vol_high ? "⚡ HIGH" : "◦ NORM"
+        vol_col = is_vol_spike ? color.yellow : is_vol_high ? color.aqua : color.silver
+        table.cell(panel, 0, 6, vol_txt, bgcolor=c_row, text_color=vol_col, text_halign=text.align_left, text_size=t_size)
+        table.cell(panel, 1, 6, str.tostring(vol_ratio, "#.#") + "x", bgcolor=c_row, text_color=vol_col, text_halign=text.align_right, text_size=t_size)
+        
+        // --- Row 7: STRUCTURE 分组标题 ---
+        table.cell(panel, 0, 7, "STRUCTURE", bgcolor=c_group, text_color=c_label, text_halign=text.align_left, text_size=size.tiny)
+        table.cell(panel, 1, 7, "", bgcolor=c_group, text_color=c_label, text_size=size.tiny)
+        
+        // --- Row 8: Term Z ---
+        z_dir = z_momentum_bullish ? "▼" : z_momentum_bearish ? "▲" : "→"
+        z_col = z < -thresh_strong ? color.lime : z > thresh_strong ? color.red : color.silver
+        table.cell(panel, 0, 8, "Z " + str.tostring(z, "#.##"), bgcolor=c_row, text_color=z_col, text_halign=text.align_left, text_size=t_size)
+        table.cell(panel, 1, 8, z_dir, bgcolor=c_row, text_color=z_momentum_bullish ? color.lime : z_momentum_bearish ? color.orange : color.silver, text_halign=text.align_right, text_size=t_size)
+        
+        // --- Row 9: Contango ---
+        contango_emoji = contango_pct < 0 ? "⚠️" : "✓"
+        contango_col = contango_pct < 0 ? color.red : color.lime
+        table.cell(panel, 0, 9, "Contango", bgcolor=c_row, text_color=c_label, text_halign=text.align_left, text_size=t_size)
+        table.cell(panel, 1, 9, contango_emoji + str.tostring(contango_pct, "#.#") + "%", bgcolor=c_row, text_color=contango_col, text_halign=text.align_right, text_size=t_size)
+        
+        // --- Row 10: STATS 分组标题 ---
+        table.cell(panel, 0, 10, "STATS (" + str.tostring(stats_lookback_years) + "Y)", bgcolor=c_group, text_color=c_label, text_halign=text.align_left, text_size=size.tiny)
+        table.cell(panel, 1, 10, "", bgcolor=c_group, text_color=c_label, text_size=size.tiny)
+        
+        // --- Row 11: CRASH + STRONG 统计 ---
         if show_signal_stats
-            stats_txt = "🚨:" + str.tostring(crash_buy_count) + " 🟢:" + str.tostring(strong_buy_count) + " 🟡:" + str.tostring(buy_dip_count)
-            table.cell(panel, 0, 8, "Signal Stats", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-            table.cell(panel, 1, 8, stats_txt, bgcolor=bg_cell, text_color=color.white, text_size=t_size)
-
-        // ===== Full Mode Only =====
-        if not is_compact
-            base_row = show_signal_stats ? 9 : 8
+            // 格式: 🚨3 +8.2%  🟢5 +4.1%
+            crash_ret_str = str.tostring(crash_buy_avg_return, "+#.#;-#.#") + "%"
+            strong_ret_str = str.tostring(strong_buy_avg_return, "+#.#;-#.#") + "%"
+            stats_left = "🚨" + str.tostring(crash_buy_count) + " " + crash_ret_str
+            stats_right = "🟢" + str.tostring(strong_buy_count) + " " + strong_ret_str
+            table.cell(panel, 0, 11, stats_left, bgcolor=c_row, text_color=crash_buy_avg_return >= 0 ? color.lime : color.red, text_halign=text.align_left, text_size=t_size)
+            table.cell(panel, 1, 11, stats_right, bgcolor=c_row, text_color=strong_buy_avg_return >= 0 ? color.lime : color.red, text_halign=text.align_right, text_size=t_size)
             
-            // Avg Return 分级显示 (v7.1 新增)
-            if show_signal_stats
-                // 第一行：CRASH 和 STRONG
-                avg_return_txt1 = "🚨" + str.tostring(crash_return_bars) + "D:" + str.tostring(crash_buy_avg_return, "+#.#;-#.#") + "% 🟢" + str.tostring(strong_return_bars) + "D:" + str.tostring(strong_buy_avg_return, "+#.#;-#.#") + "%"
-                table.cell(panel, 0, base_row, "Avg Return", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-                table.cell(panel, 1, base_row, avg_return_txt1, bgcolor=bg_cell, text_color=color.white, text_size=t_size)
-                // 第二行：BUY DIP
-                avg_return_txt2 = "🟡" + str.tostring(dip_return_bars) + "D:" + str.tostring(buy_dip_avg_return, "+#.#;-#.#") + "%"
-                table.cell(panel, 0, base_row + 1, "", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-                table.cell(panel, 1, base_row + 1, avg_return_txt2, bgcolor=bg_cell, text_color=color.white, text_size=t_size)
-                base_row += 2
-
-            // VIX Basis
-            basis_col = is_basis_panic ? color.red : is_basis_calm ? color.lime : color.silver
-            basis_txt = str.tostring(vix_basis, "#.##") + "%"
-            table.cell(panel, 0, base_row, "VIX Basis", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-            table.cell(panel, 1, base_row, basis_txt, bgcolor=bg_cell, text_color=basis_col, text_size=t_size)
-
-            // Contango
-            c_col = contango_pct > 0 ? color.lime : color.red
-            table.cell(panel, 0, base_row + 1, "Contango %", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-            table.cell(panel, 1, base_row + 1, str.tostring(contango_pct, "#.##") + "%", bgcolor=bg_cell, text_color=c_col, text_size=t_size)
-
-            // SKEW
-            skew_val_str = not na(skew) ? str.tostring(skew, "#.0") : "N/A"
-            skew_col_final = not na(skew) ? (is_skew_high ? color.red : is_skew_low ? color.lime : color.silver) : color.gray
-            table.cell(panel, 0, base_row + 2, "SKEW Index", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-            table.cell(panel, 1, base_row + 2, skew_val_str, bgcolor=bg_cell, text_color=skew_col_final, text_size=t_size)
-
-            // VVIX (if enabled)
-            vvix_offset = 0
-            if use_vvix
-                vvix_val_str = not na(vvix) ? str.tostring(vvix, "#.#") : "N/A"
-                vvix_col = is_vvix_panic ? color.red : is_vvix_calm ? color.lime : color.silver
-                table.cell(panel, 0, base_row + 3, "VVIX", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-                table.cell(panel, 1, base_row + 3, vvix_val_str, bgcolor=bg_cell, text_color=vvix_col, text_size=t_size)
-                vvix_offset := 1
-
-            // P/C Ratio
-            pcr_display = not na(pcr) ? str.tostring(pcr, "#.##") : "N/A"
-            pcr_col = not na(pcr) ? (pcr > 1.2 ? color.lime : pcr < 0.7 ? color.red : color.silver) : color.gray
-            table.cell(panel, 0, base_row + 3 + vvix_offset, "Put/Call (Idx)", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-            table.cell(panel, 1, base_row + 3 + vvix_offset, pcr_display, bgcolor=bg_cell, text_color=pcr_col, text_size=t_size)
-            
-            // Max Profit Stats (v7.1 新增 - 可选)
-            if use_max_profit_stats
-                max_ret_txt = "🚨" + str.tostring(max_profit_crash_ret, "+#.#") + "% 🟢" + str.tostring(max_profit_strong_ret, "+#.#") + "% 🟡" + str.tostring(max_profit_dip_ret, "+#.#") + "%"
-                table.cell(panel, 0, base_row + 4 + vvix_offset, "Max Profit", bgcolor=bg_cell, text_color=txt_lbl, text_halign=text.align_left, text_size=t_size)
-                table.cell(panel, 1, base_row + 4 + vvix_offset, max_ret_txt, bgcolor=bg_cell, text_color=color.new(color.aqua, 20), text_size=t_size)
-
-        // v7.7: 仅在预览模式显示重绘警告
-        // Trading Safe Mode ON (默认) = 无需警告（无重绘）
-        if is_preview_mode
-            warning_row_idx = panel_rows - 1
-            table.cell(panel, 0, warning_row_idx, "⚠️ Preview Mode", bgcolor=color.new(color.orange, 85), text_color=color.orange, text_size=size.tiny, text_halign=text.align_left)
-            table.cell(panel, 1, warning_row_idx, "May Repaint", bgcolor=color.new(color.orange, 85), text_color=color.orange, text_size=size.tiny)
+            // --- Row 12: BUY DIP 统计 ---
+            dip_ret_str = str.tostring(buy_dip_avg_return, "+#.#;-#.#") + "%"
+            stats_dip = "🟡" + str.tostring(buy_dip_count) + " " + dip_ret_str
+            table.cell(panel, 0, 12, stats_dip, bgcolor=c_row, text_color=buy_dip_avg_return >= 0 ? color.lime : color.red, text_halign=text.align_left, text_size=t_size)
+            table.cell(panel, 1, 12, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
+        else
+            table.cell(panel, 0, 11, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
+            table.cell(panel, 1, 11, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
+            table.cell(panel, 0, 12, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
+            table.cell(panel, 1, 12, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
 
 // ========== 10. SMART ALERT (Unified Alert System v7.5) ==========
 // 基于 Adaptive RSI Pro 的智能警报优化：
