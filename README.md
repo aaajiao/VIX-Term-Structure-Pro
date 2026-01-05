@@ -4,36 +4,28 @@
 [![Pine Script](https://img.shields.io/badge/Pine%20Script-v6-brightgreen)](https://www.tradingview.com/pine-script-reference/v6/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Professional VIX-based Market Sentiment & Timing Indicator**
-**专业的 VIX 市场情绪与择时指标**
-
 ---
 
-## 🌟 Overview | 概述
+## 🇺🇸 English
 
-**English:**
+### 🌟 Overview
 VIX Term Structure Pro is an advanced multi-factor market timing indicator that combines VIX futures term structure analysis, adaptive volatility regime detection, and comprehensive market breadth monitoring to generate high-precision buy/sell signals.
 
-**中文：**
-VIX Term Structure Pro 是一款高级多因子市场择时指标，结合 VIX 期货期限结构分析、自适应波动率区间检测和全面的市场广度监控，生成高精度的买卖信号。
+### 🚦 Signal System
 
----
+#### Three-Tier Signal Logic
 
-## 🚦 Signal System | 信号系统
+| Signal | Score | Meaning | Action |
+|:--|:--|:--|:--|
+| 🚨 **CRASH BUY** | ≥ 6 | Extreme panic, rare opportunity | Aggressive Entry |
+| 🟢 **STRONG BUY** | ≥ 5 | Multi-factor confluence | Build Position |
+| 🟡 **BUY DIP** | ≥ 4 | Accumulate on weakness | Add to Position |
+| ⚪ **NEUTRAL** | -2~4 | No clear signal | Wait / Hold |
+| 🟠 **SELL/HEDGE** | ≤ -2 | Complacency or greed detected | Reduce/Hedge |
+| 🔴 **STRONG SELL** | ≤ -5 | Strong bearish signals | Sell |
+| 🔥 **EUPHORIA** | ≤ -6 | Extreme greed, market overheated | Exit All |
 
-### Three-Tier Signal Logic | 三级信号逻辑
-
-| Signal | Score | Meaning (English) | 含义 (中文) | Action |
-|:--|:--|:--|:--|:--|
-| 🚨 **CRASH BUY** | ≥ 6 | Extreme panic, rare opportunity | 极端恐慌，罕见机会 | Aggressive Entry |
-| 🟢 **STRONG BUY** | ≥ 5 | Multi-factor confluence | 多因子共振 | Build Position |
-| 🟡 **BUY DIP** | ≥ 4 | Accumulate on weakness | 逢低吸纳 | Add to Position |
-| ⚪ **NEUTRAL** | -2~4 | No clear signal | 无明确信号 | Wait / Hold |
-| 🟠 **SELL/HEDGE** | ≤ -2 | Complacency or greed detected | 检测到自满或贪婪 | Reduce/Hedge |
-| 🔴 **STRONG SELL** | ≤ -5 | Strong bearish signals | 强烈看跌信号 | Sell |
-| 🔥 **EUPHORIA** | ≤ -6 | Extreme greed, market overheated | 极度贪婪，市场过热 | Exit All |
-
-### Filtered States | 过滤状态
+#### Filtered States
 
 | Status | Display | Condition | Meaning |
 |:--|:--|:--|:--|
@@ -41,15 +33,12 @@ VIX Term Structure Pro 是一款高级多因子市场择时指标，结合 VIX �
 | **HOLD** | `☕ HOLD` | Low Vol or Momentum not confirmed | **Sell Side**: Score is low but trend is strong. Don't sell yet. |
 | **NO TRADE** | `🐻 WAIT` | Bear Market Trend Filter | **Bear Market**: Signals filtered to preserve capital. |
 
----
-
-## 📋 Dashboard | 仪表盘
+### 📋 Dashboard
 
 **v7.8 Redesign**: Features a dark theme, dynamic signal highlighting, and two display modes.
-**v7.8 重设计**: 采用深色主题，动态信号高亮，提供两种显示模式。
 
-### 📱 Mobile Mode (2 Rows) | 移动模式
-Designed for phone screens. / 专为手机屏幕设计。
+#### 📱 Mobile Mode (2 Rows)
+Designed for phone screens.
 
 | Row | Content | Example |
 |:--|:--|:--|
@@ -58,8 +47,8 @@ Designed for phone screens. / 专为手机屏幕设计。
 
 *(If filtered, Row 1 shows reason: `✋ WAIT: Need ≥4`)*
 
-### 🖥️ Full Mode (13 Rows) | 完整模式
-Comprehensive market analysis. / 全面的市场分析。
+#### 🖥️ Full Mode (13 Rows)
+Comprehensive market analysis.
 
 | Section | Content |
 |:--|:--|
@@ -69,14 +58,11 @@ Comprehensive market analysis. / 全面的市场分析。
 | **STRUCTURE** | Term Structure Z-Score + Contango % |
 | **STATS** | Historical Signal Stats: `🚨3 +8.2% 🟢5 +4.1% / 🟡12 +1.8%` |
 
----
-
-## 🔔 Smart Alert System | 智能警报系统
+### 🔔 Smart Alert System
 
 The system uses a **Level (Lv1-3)** priority mechanism with **Adaptive Cooldown**.
-系统采用 **等级 (Lv1-3)** 优先级机制配合 **自适应冷却**。
 
-### Trigger Scenarios | 触发场景
+#### Trigger Scenarios
 
 | Scenario | Trigger | Example Output |
 |:--|:--|:--|
@@ -84,13 +70,13 @@ The system uses a **Level (Lv1-3)** priority mechanism with **Adaptive Cooldown*
 | **Upgrade ⬆️** | Signal gets stronger | `SPY: 🟢 STRONG BUY +5 ⬆️ ...` |
 | **Downgrade ⬇️** | Signal gets weaker | `SPY: 🟡 BUY DIP +4 ⬇️ ...` |
 
-### Adaptive Cooldown | 自适应冷却
+#### Adaptive Cooldown
 
 - **HIGH VOL (>25)**: **0.5x** Cooldown (Alerts faster during panic)
 - **NORMAL (15-25)**: **1.0x** Cooldown (Standard)
 - **LOW VOL (<15)**: **2.0x** Cooldown (Reduces noise in calm markets)
 
-### Alert Message Format | 警报格式
+#### Alert Message Format
 
 ```text
 Symbol: [Signal] [Level] [Direction] | [Context]
@@ -99,11 +85,9 @@ SPY: 🟢 STRONG BUY [Lv2] ⬆️ | Score:5.2 Z:-2.1 VIX:19(NORM)
 QQQ: ✋ WAIT (High Vol)     | Score:4.0 Z:-1.8 VIX:28(HIGH)
 ```
 
----
+### 📝 Changelog
 
-## 📝 Changelog | 更新日志
-
-### v7.8 (Current)
+#### v7.8 (Current)
 - **🎨 Dashboard Redesign**:
   - New **Mobile Mode** (2 rows) vs **Full Mode** (13 rows).
   - Visual **Score Progress Bar** added.
@@ -115,12 +99,109 @@ QQQ: ✋ WAIT (High Vol)     | Score:4.0 Z:-1.8 VIX:28(HIGH)
   - Added **Cross-Bar Upgrade** detection (e.g., DIP → STRONG).
   - Included filtered signal alerts (WAIT/HOLD status).
 
+### ⚠️ Disclaimer
+This indicator is for educational purposes only. It does not constitute financial advice. Past performance does not guarantee future results.
+
+### 📄 License
+MIT License
+
 ---
 
-## ⚠️ Disclaimer | 免责声明
+## 🇨🇳 中文
 
-**English:** This indicator is for educational purposes only. It does not constitute financial advice. Past performance does not guarantee future results.
-**中文：** 本指标仅供教育参考，不构成投资建议。过往表现不代表未来收益。
+### 🌟 概述
+VIX Term Structure Pro 是一款高级多因子市场择时指标，结合 VIX 期货期限结构分析、自适应波动率区间检测和全面的市场广度监控，生成高精度的买卖信号。
 
-## 📄 License | 许可证
+### 🚦 信号系统
+
+#### 三级信号逻辑
+
+| 信号 | 评分 | 含义 | 操作建议 |
+|:--|:--|:--|:--|
+| 🚨 **CRASH BUY** | ≥ 6 | 极端恐慌，罕见机会 | 积极入场 |
+| 🟢 **STRONG BUY** | ≥ 5 | 多因子共振 | 建仓 |
+| 🟡 **BUY DIP** | ≥ 4 | 逢低吸纳 | 加仓 |
+| ⚪ **NEUTRAL** | -2~4 | 无明确信号 | 观望 / 持有 |
+| 🟠 **SELL/HEDGE** | ≤ -2 | 检测到自满或贪婪 | 减仓/对冲 |
+| 🔴 **STRONG SELL** | ≤ -5 | 强烈看跌信号 | 卖出 |
+| 🔥 **EUPHORIA** | ≤ -6 | 极度贪婪，市场过热 | 清仓 |
+
+#### 过滤状态
+
+| 状态 | 显示 | 条件 | 含义 |
+|:--|:--|:--|:--|
+| **WAIT** | `✋ WAIT` | 高波动或动量未确认 | **买入侧**: 评分高但风险也高。等待更好的入场时机。 |
+| **HOLD** | `☕ HOLD` | 低波动或动量未确认 | **卖出侧**: 评分低但趋势强劲。暂不卖出。 |
+| **NO TRADE** | `🐻 WAIT` | 熊市趋势过滤 | **熊市**: 过滤信号以保护本金。 |
+
+### 📋 仪表盘
+
+**v7.8 重设计**: 采用深色主题，动态信号高亮，提供两种显示模式。
+
+#### 📱 移动模式 (2行)
+专为手机屏幕设计。
+
+| 行 | 内容 | 示例 |
+|:--|:--|:--|
+| **1** | **信号 + 评分** | `🟢 STRONG BUY +5` |
+| **2** | **VIX 状态** | `🟡 VIX:18 NORMAL` |
+
+*(如果被过滤，第1行显示原因: `✋ WAIT: Need ≥4`)*
+
+#### 🖥️ 完整模式 (13行)
+全面的市场分析。
+
+| 区域 | 内容 |
+|:--|:--|
+| **HEADER** | 标题 + 模式 (`🛡️SAFE` 或 `⚠️PREVIEW`) |
+| **SIGNAL** | **当前信号** + **评分进度条** (█░░░░) |
+| **MARKET** | 趋势状态 (SPX/NDX/RUT) + VIX 区间 + 成交量状态 |
+| **STRUCTURE** | 期限结构 Z-Score + 升水率 (Contango %) |
+| **STATS** | 历史信号统计: `🚨3 +8.2% 🟢5 +4.1% / 🟡12 +1.8%` |
+
+### 🔔 智能警报系统
+
+系统采用 **等级 (Lv1-3)** 优先级机制配合 **自适应冷却**。
+
+#### 触发场景
+
+| 场景 | 触发条件 | 输出示例 |
+|:--|:--|:--|
+| **首次触发** | 信号出现 | `SPY: 🟡 BUY DIP +4 ...` |
+| **升级 ⬆️** | 信号变强 | `SPY: 🟢 STRONG BUY +5 ⬆️ ...` |
+| **降级 ⬇️** | 信号变弱 | `SPY: 🟡 BUY DIP +4 ⬇️ ...` |
+
+#### 自适应冷却
+
+- **HIGH VOL (>25)**: **0.5x** 冷却 (恐慌期报警更频繁)
+- **NORMAL (15-25)**: **1.0x** 冷却 (标准)
+- **LOW VOL (<15)**: **2.0x** 冷却 (平静市场减少噪音)
+
+#### 警报格式
+
+```text
+Symbol: [Signal] [Level] [Direction] | [Context]
+------------------------------------------------
+SPY: 🟢 STRONG BUY [Lv2] ⬆️ | Score:5.2 Z:-2.1 VIX:19(NORM)
+QQQ: ✋ WAIT (High Vol)     | Score:4.0 Z:-1.8 VIX:28(HIGH)
+```
+
+### 📝 更新日志
+
+#### v7.8 (Current)
+- **🎨 仪表盘重设计**:
+  - 新增 **移动模式** (2行) 与 **完整模式** (13行)。
+  - 添加可视化 **评分进度条**。
+  - 深色主题与动态背景色。
+- **🛡️ 实盘安全模式**:
+  - 默认开启 `lookahead_off` 防止重绘。
+  - 区分 `🛡️SAFE` (安全) 与 `⚠️PREVIEW` (预览) 状态。
+- **🔔 智能警报 v2 更新**:
+  - 新增 **跨K线升级** 检测 (如 DIP → STRONG)。
+  - 包含过滤后信号的警报 (WAIT/HOLD 状态)。
+
+### ⚠️ 免责声明
+本指标仅供教育参考，不构成投资建议。过往表现不代表未来收益。
+
+### 📄 许可证
 MIT License
