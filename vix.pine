@@ -2,7 +2,7 @@
 indicator("VIX Term Structure Pro [v7.9]", overlay=false, max_lines_count=500, calc_bars_count=1000)
 
 // ╔════════════════════════════════════════════════════════════════════════════╗
-// ║                    VIX Term Structure Pro v7.8 使用指南                      ║
+// ║                    VIX Term Structure Pro v7.9 使用指南                      ║
 // ╠════════════════════════════════════════════════════════════════════════════╣
 // ║ 📊 仪表盘指标解读                                                           ║
 // ║----------------------------------------------------------------------------║
@@ -270,16 +270,16 @@ valid_data = not na(vix) and not na(vx1) and not na(vx2)
 
 // ========== 3. 核心计算 ==========
 // SPX 趋势判断（使用自适应趋势均线）
-is_spx_bull = not na(spx_close) ? (spx_close > spx_trend_ma) : true
+is_spx_bull = not na(spx_close) and not na(spx_trend_ma) ? (spx_close > spx_trend_ma) : true
 // NDX 趋势判断
-is_ndx_bull = not na(ndx_close) ? (ndx_close > ndx_trend_ma) : true
+is_ndx_bull = not na(ndx_close) and not na(ndx_trend_ma) ? (ndx_close > ndx_trend_ma) : true
 // RUT 趋势判断
-is_rut_bull = not na(rut_close) ? (rut_close > rut_trend_ma) : true
+is_rut_bull = not na(rut_close) and not na(rut_trend_ma) ? (rut_close > rut_trend_ma) : true
 
 // 主趋势判断（用于评分系统的过滤）
 is_primary_bull = auto_detect_index ? 
                   (is_russell_chart ? is_rut_bull : is_nasdaq_chart ? is_ndx_bull : is_spx_bull) : 
-                  (not na(manual_close) ? (manual_close > manual_trend_ma) : true)
+                  (not na(manual_close) and not na(manual_trend_ma) ? (manual_close > manual_trend_ma) : true)
 
 // 趋势状态文本（三指数合并显示）
 spx_emoji = is_spx_bull ? "🟢" : "🔴"
@@ -304,11 +304,14 @@ contango_pct = valid_data and vx1 != 0 ? ((vx2 / vx1) - 1) * 100 : 0.0
 // VIX/VX1 Basis（现货溢价）- 恐慌领先指标
 vix_basis = valid_data and vx1 != 0 ? ((vix / vx1) - 1) * 100 : 0.0
 
-// 自适应阈值计算
-vix_basis_pct_high = ta.percentile_linear_interpolation(vix_basis, adapt_lookback, 90)
-vix_basis_pct_low = ta.percentile_linear_interpolation(vix_basis, adapt_lookback, 10)
-pcr_pct_high = ta.percentile_linear_interpolation(pcr, adapt_lookback, 90)
-pcr_pct_low = ta.percentile_linear_interpolation(pcr, adapt_lookback, 10)
+// v7.9: Warmup 检查 - 确保百分位计算有足够数据
+has_sufficient_data = bar_index >= adapt_lookback
+
+// 自适应阈值计算（带 warmup 保护）
+vix_basis_pct_high = has_sufficient_data ? ta.percentile_linear_interpolation(vix_basis, adapt_lookback, 90) : 5.0
+vix_basis_pct_low = has_sufficient_data ? ta.percentile_linear_interpolation(vix_basis, adapt_lookback, 10) : -3.0
+pcr_pct_high = has_sufficient_data ? ta.percentile_linear_interpolation(pcr, adapt_lookback, 90) : 1.20
+pcr_pct_low = has_sufficient_data ? ta.percentile_linear_interpolation(pcr, adapt_lookback, 10) : 0.70
 
 // 根据设置选择阈值模式
 is_basis_panic = use_adaptive_thresholds ? (vix_basis > vix_basis_pct_high) : (vix_basis > 5)
@@ -329,13 +332,14 @@ z_momentum_flat = math.abs(z_roc) <= z_momentum_neutral_zone  // 中性区域
 
 // 周线 MTF 确认 (v7.7: 统一 lookahead 策略)
 z_weekly = request.security(syminfo.tickerid, "W", z, lookahead=lookahead_setting, ignore_invalid_symbol=true)
-is_weekly_buy_aligned = not na(z_weekly) ? z_weekly < -thresh_mid : true
-is_weekly_sell_aligned = not na(z_weekly) ? z_weekly > thresh_mid : true
+// v7.9: 当 MTF 确认开启但周线数据不可用时，不允许信号通过（更保守）
+is_weekly_buy_aligned = not na(z_weekly) ? z_weekly < -thresh_mid : not use_mtf_confirm
+is_weekly_sell_aligned = not na(z_weekly) ? z_weekly > thresh_mid : not use_mtf_confirm
 
 // Smart SKEW - 优化：支持百分位数模式
 skew_avg   = ta.sma(skew, skew_len)
 skew_stdev = ta.stdev(skew, skew_len)
-skew_z     = (skew - skew_avg) / skew_stdev
+skew_z     = skew_stdev != 0 ? (skew - skew_avg) / skew_stdev : 0.0
 
 // SKEW 百分位数计算（更自适应）
 skew_pct_high = ta.percentile_linear_interpolation(skew, 252, 90)
