@@ -7,9 +7,10 @@
 | Attribute | Value |
 |-----------|-------|
 | **Type** | TradingView Pine Script v6 Indicator |
-| **Main File** | `vix.pine` (~807 lines) |
+| **Main File** | `vix.pine` (~812 lines) |
 | **Purpose** | Multi-factor VIX term structure analysis with buy/sell signals |
 | **Language** | Pine Script (TradingView DSL) |
+| **Version** | v7.9 |
 
 ## Build / Lint / Test Commands
 
@@ -124,6 +125,22 @@ if signal_triggered and (bar_index - last_signal_bar > adaptive_cooldown)
 ```pine
 var int last_alert_bar = 0       // Persists across bars, resets on reload
 varip int alert_level_sent = 0   // Resets each new bar (intra-bar dedup)
+```
+
+| Keyword | Behavior | Use Case |
+|---------|----------|----------|
+| `var` | Persists across bars, resets on reload | Cross-bar state (cooldown tracking) |
+| `varip` | Resets each new bar | Intra-bar dedup (alert level tracking) |
+
+### Trading Safe Mode (v7.9)
+
+```pine
+// Signal calculation: always use lookahead_off for no-repaint
+vix = request.security(sym, tf, close, lookahead=lookahead_setting, ignore_invalid_symbol=true)
+
+// Dashboard display only: real-time on last bar
+vix_rt = request.security(sym, tf, close, lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
+vix_display = barstate.islast ? vix_rt : vix
 ```
 
 ## Documentation Standards
