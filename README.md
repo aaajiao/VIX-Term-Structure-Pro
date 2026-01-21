@@ -1,4 +1,4 @@
-# VIX Term Structure Pro v7.8
+# VIX Term Structure Pro v7.9
 
 [![TradingView](https://img.shields.io/badge/TradingView-Indicator-blue?logo=tradingview)](https://www.tradingview.com/scripts/)
 [![Pine Script](https://img.shields.io/badge/Pine%20Script-v6-brightgreen)](https://www.tradingview.com/pine-script-reference/v6/)
@@ -87,7 +87,17 @@ QQQ: ✋ WAIT (High Vol)     | Score:4.0 Z:-1.8 VIX:28(HIGH)
 
 ### 📝 Changelog
 
-#### v7.8 (Current)
+#### v7.9 (Current)
+- **🛡️ Robustness Improvements for Production Trading**:
+  - Added division-by-zero guard for SKEW Z-Score calculation.
+  - Added complete NA checks for trend MA comparisons (SPX/NDX/RUT/Manual).
+  - Improved Weekly MTF fallback logic (stricter when `use_mtf_confirm=true`).
+  - Added warmup period protection for percentile calculations.
+- **🎯 Real-time VIX Display**:
+  - Dashboard shows real-time VIX value (`ʳᵗ` indicator) in Safe Mode.
+  - Signal calculations remain non-repainting.
+
+#### v7.8
 - **🎨 Dashboard Redesign**:
   - New **Mobile Mode** (2 rows) vs **Full Mode** (13 rows).
   - Visual **Score Progress Bar** added.
@@ -188,7 +198,17 @@ QQQ: ✋ WAIT (High Vol)     | Score:4.0 Z:-1.8 VIX:28(HIGH)
 
 ### 📝 更新日志
 
-#### v7.8 (Current)
+#### v7.9 (Current)
+- **🛡️ 生产交易稳健性改进**:
+  - SKEW Z-Score 计算添加除零保护。
+  - 趋势均线比较添加完整 NA 检查 (SPX/NDX/RUT/Manual)。
+  - Weekly MTF 回退逻辑优化（开启 `use_mtf_confirm` 时更严格）。
+  - 百分位计算添加 Warmup 期保护。
+- **🎯 实时 VIX 显示**:
+  - Safe 模式下仪表盘显示实时 VIX 值（`ʳᵗ` 标记）。
+  - 信号计算保持无重绘。
+
+#### v7.8
 - **🎨 仪表盘重设计**:
   - 新增 **移动模式** (2行) 与 **完整模式** (13行)。
   - 添加可视化 **评分进度条**。
