@@ -1,5 +1,5 @@
 //@version=6
-indicator("VIX Term Structure Pro [v7.8]", overlay=false, max_lines_count=500, calc_bars_count=1000)
+indicator("VIX Term Structure Pro [v7.9]", overlay=false, max_lines_count=500, calc_bars_count=1000)
 
 // ╔════════════════════════════════════════════════════════════════════════════╗
 // ║                    VIX Term Structure Pro v7.8 使用指南                      ║
@@ -80,8 +80,8 @@ calc_kama(src, length, fastLen, slowLen) =>
 // 📡 数据源设置 (Data Sources)
 // ────────────────────────────────────────────────────────────────────────────
 grp_data = "📡 Data Sources"
-trading_safe_mode = input.bool(true, "🛡️ Trading Safe Mode (Recommended)", group=grp_data, tooltip="ON: 实盘安全模式 Trading-safe (无重绘 no repaint, 默认推荐 recommended)\nOFF: 预览模式 Preview mode (盘中实时更新但历史可能重绘 intraday updates but history may repaint)")
-backtest_mode = input.bool(false, "🔬 Legacy Backtest Mode", group=grp_data, tooltip="⚠️ 已弃用，请使用 Trading Safe Mode\nDeprecated: Use Trading Safe Mode instead\n保留仅供向后兼容 Kept for backward compatibility")
+trading_safe_mode = input.bool(true, "🛡️ Trading Safe Mode (Recommended)", group=grp_data, tooltip="ON: 实盘安全模式 Trading-safe\n    • 信号无重绘 Signals no repaint\n    • 面板VIX实时显示(ʳᵗ) Dashboard VIX real-time\nOFF: 预览模式 Preview mode\n    • 历史可能重绘 History may repaint")
+
 sym_vix_input = input.symbol("CBOE:VIX", "VIX Symbol", group=grp_data, tooltip="VIX数据源 VIX data source\n默认 Default: CBOE:VIX")
 vix_timeframe = input.string("Daily", "VIX Timeframe", options=["Daily", "Chart"], group=grp_data, tooltip="Daily: 日线收盘价 daily close (稳定 stable)\nChart: 跟随图表 follow chart (实时 real-time)")
 sym_pcr_input = input.symbol("INDEX:CPCI", "Put/Call Ratio Symbol", group=grp_data, tooltip="看跌/看涨比率 Put/Call Ratio\n默认 Default: INDEX:CPCI (指数期权 Index options)")
@@ -194,16 +194,20 @@ t_size = table_size == "Small" ? size.small : table_size == "Large" ? size.large
 is_mobile = panel_mode == "Mobile"
 
 // ========== 2. 数据获取 ==========
-// v7.7: Trading Safe Mode 默认开启，使用 lookahead_off 避免重绘
-// Trading Safe Mode ON (默认): 无重绘，实盘安全
+// v7.9: Trading Safe Mode 默认开启，使用 lookahead_off 避免重绘
+// Trading Safe Mode ON (默认): 信号无重绘，面板VIX实时显示
 // Trading Safe Mode OFF: 盘中实时预览，但历史可能重绘
-// Legacy Backtest Mode: 向后兼容，优先级低于 Trading Safe Mode
 vix_tf = vix_timeframe == "Daily" ? "D" : ""
-// 统一 lookahead 策略：Trading Safe Mode 优先，然后是 Legacy Backtest Mode
-is_no_repaint_mode = trading_safe_mode or backtest_mode
+is_no_repaint_mode = trading_safe_mode
 lookahead_setting = is_no_repaint_mode ? barmerge.lookahead_off : barmerge.lookahead_on
 
 vix     = request.security(sym_vix_input, vix_tf, close, lookahead=lookahead_setting, ignore_invalid_symbol=true)
+
+// v7.9: 面板显示专用的实时 VIX（不影响信号计算）
+// 最后一根K线用 vix_rt（实时），历史K线用 vix（避免重绘）
+vix_rt = request.security(sym_vix_input, vix_tf, close, lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
+vix_display = barstate.islast ? vix_rt : vix
+
 vx1     = request.security("CBOE:VX1!", "D", close, lookahead=lookahead_setting, ignore_invalid_symbol=true)
 vx2     = request.security("CBOE:VX2!", "D", close, lookahead=lookahead_setting, ignore_invalid_symbol=true)
 vx1_vol = request.security("CBOE:VX1!", "D", volume, lookahead=lookahead_setting, ignore_invalid_symbol=true)
@@ -595,7 +599,7 @@ c_value  = color.rgb(255, 255, 255)    // #ffffff 数值白色
 signal_bg = score >= 5 ? c_buy_bg : score <= -5 ? c_sell_bg : c_row
 
 // v7.8: 仅在预览模式（非实盘安全模式）时显示重绘警告
-is_preview_mode = not trading_safe_mode and not backtest_mode
+is_preview_mode = not trading_safe_mode
 
 // Mobile: 2行, Full: 13行
 panel_rows = is_mobile ? 2 : 13
@@ -610,11 +614,11 @@ if show_table and barstate.islast
         table.cell(panel, 0, 0, signal_txt, bgcolor=signal_bg, text_color=signal_col, text_halign=text.align_left, text_size=t_size)
         table.cell(panel, 1, 0, str.tostring(score, "+#.#;-#.#"), bgcolor=signal_bg, text_color=signal_col, text_halign=text.align_right, text_size=t_size)
         
-        // Row 1: VIX状态 + 数值
-        vix_display = vix_regime_emoji + " " + vix_regime_txt
-        vix_val_display = str.tostring(vix, "#.#")
-        table.cell(panel, 0, 1, vix_display, bgcolor=c_row, text_color=vix_regime_color, text_halign=text.align_left, text_size=t_size)
-        table.cell(panel, 1, 1, vix_val_display, bgcolor=c_row, text_color=vix_regime_color, text_halign=text.align_right, text_size=t_size)
+        // Row 1: VIX状态 + 数值 (v7.9: 使用实时VIX)
+        vix_regime_str = vix_regime_emoji + " " + vix_regime_txt
+        vix_val_str = str.tostring(vix_display, "#.#") + (trading_safe_mode ? "ʳᵗ" : "")
+        table.cell(panel, 0, 1, vix_regime_str, bgcolor=c_row, text_color=vix_regime_color, text_halign=text.align_left, text_size=t_size)
+        table.cell(panel, 1, 1, vix_val_str, bgcolor=c_row, text_color=vix_regime_color, text_halign=text.align_right, text_size=t_size)
     else
         // ═══════════════════════════════════════════════════════════════════
         // Full Mode: 分组布局 + 进度条
@@ -645,10 +649,11 @@ if show_table and barstate.islast
         table.cell(panel, 0, 4, trend_compact, bgcolor=c_row, text_color=trend_color, text_halign=text.align_left, text_size=t_size)
         table.cell(panel, 1, 4, "SPX NDX RUT", bgcolor=c_row, text_color=c_label, text_halign=text.align_right, text_size=size.tiny)
         
-        // --- Row 5: VIX Regime ---
+        // --- Row 5: VIX Regime (v7.9: 使用实时VIX) ---
         vix_full_display = vix_regime_emoji + " " + vix_regime_txt
+        vix_val_with_rt = str.tostring(vix_display, "#.#") + (trading_safe_mode ? " ʳᵗ" : "")
         table.cell(panel, 0, 5, vix_full_display, bgcolor=c_row, text_color=vix_regime_color, text_halign=text.align_left, text_size=t_size)
-        table.cell(panel, 1, 5, str.tostring(vix, "#.#"), bgcolor=c_row, text_color=vix_regime_color, text_halign=text.align_right, text_size=t_size)
+        table.cell(panel, 1, 5, vix_val_with_rt, bgcolor=c_row, text_color=vix_regime_color, text_halign=text.align_right, text_size=t_size)
         
         // --- Row 6: Volume Status ---
         vol_ratio = not na(vx1_vol) and vol_ma > 0 ? vx1_vol / vol_ma : 0
