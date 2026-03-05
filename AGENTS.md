@@ -183,6 +183,30 @@ vix_display = barstate.islast ? vix_rt : vix
 
 `.opencode/`, `.claude/`, `.DS_Store`
 
+## Architecture Principles
+
+### Score = Pure VIX Structure (v7.10)
+
+Score must be an **objective VIX term structure metric**, identical across all chart symbols. Never mix chart-dependent data (trend, symbol detection) into Score.
+
+- **Score factors**: Z-Score, contango, VIX basis, SKEW, PCR, VVIX, volume, momentum, MTF
+- **NOT in Score**: trend filter, `is_bull_market`, anything derived from `syminfo.ticker`
+- **Trend filter** only affects signal **display** (BUY DIP → NO TRADE), never the Score value
+
+### Cross-Chart Consistency
+
+Avoid `syminfo.tickerid` in `request.security()` unless intentionally chart-dependent. For VIX-derived calculations, use fixed symbols (`"SP:SPX"`, `"CBOE:VIX"`) to ensure identical results across charts.
+
+```pine
+// ❌ WRONG — weekly Z differs across QQQ/SPY due to calendar alignment
+z_weekly = request.security(syminfo.tickerid, "W", z, ...)
+
+// ✅ CORRECT — fixed symbol, consistent across all charts
+z_weekly = request.security("SP:SPX", "W", z, ...)
+```
+
+`syminfo.ticker` is fine for: auto-detect logic, alert message text, display labels.
+
 ## Hard Constraints
 
 1. **No Repainting** - Default `lookahead_off` for live trading safety

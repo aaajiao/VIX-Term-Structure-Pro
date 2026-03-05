@@ -1,4 +1,4 @@
-# VIX Term Structure Pro v7.9
+# VIX Term Structure Pro v7.10
 
 [![TradingView](https://img.shields.io/badge/TradingView-Indicator-blue?logo=tradingview)](https://www.tradingview.com/scripts/)
 [![Pine Script](https://img.shields.io/badge/Pine%20Script-v6-brightgreen)](https://www.tradingview.com/pine-script-reference/v6/)
@@ -87,7 +87,18 @@ QQQ: ✋ WAIT (High Vol)     | Score:4.0 Z:-1.8 VIX:28(HIGH)
 
 ### 📝 Changelog
 
-#### v7.9 (Current)
+#### v7.10 (Current)
+- **📊 Cross-Chart Score Consistency**:
+  - Score is now a **pure VIX structure metric** — identical across all chart symbols (QQQ, SPY, IWM, etc.).
+  - Removed `-2` trend penalty from Score. Trend filter now only affects signal display (BUY DIP → NO TRADE).
+  - Weekly MTF Z-Score uses fixed `SP:SPX` calendar alignment instead of `syminfo.tickerid`.
+- **📈 Auto-Detect Stats Returns**:
+  - Signal return statistics now use the auto-detected index (QQQ→NDX, IWM→RUT, others→SPX).
+  - Ensures filter logic and stats reference are consistent.
+- **🔧 Fix CW10003 Warnings**:
+  - Extracted `ta.percentile_linear_interpolation` calls from ternary operators to global scope.
+
+#### v7.9
 - **🛡️ Robustness Improvements for Production Trading**:
   - Added division-by-zero guard for SKEW Z-Score calculation.
   - Added complete NA checks for trend MA comparisons (SPX/NDX/RUT/Manual).
@@ -198,7 +209,18 @@ QQQ: ✋ WAIT (High Vol)     | Score:4.0 Z:-1.8 VIX:28(HIGH)
 
 ### 📝 更新日志
 
-#### v7.9 (Current)
+#### v7.10 (Current)
+- **📊 跨图表 Score 一致性**:
+  - Score 现在是**纯 VIX 结构客观指标**——在所有图表品种（QQQ、SPY、IWM 等）上完全一致。
+  - 移除 Score 中的 `-2` 趋势惩罚。趋势过滤仅影响信号展示（BUY DIP → NO TRADE）。
+  - Weekly MTF Z-Score 改用固定 `SP:SPX` 日历对齐，消除跨图表差异。
+- **📈 统计收益跟随 Auto-Detect 指数**:
+  - 信号回报统计改用对应指数（QQQ→NDX, IWM→RUT, 其他→SPX）。
+  - 确保过滤逻辑和统计口径一致。
+- **🔧 修复 CW10003 警告**:
+  - 将 `ta.percentile_linear_interpolation` 从三元运算符提取到全局作用域。
+
+#### v7.9
 - **🛡️ 生产交易稳健性改进**:
   - SKEW Z-Score 计算添加除零保护。
   - 趋势均线比较添加完整 NA 检查 (SPX/NDX/RUT/Manual)。
