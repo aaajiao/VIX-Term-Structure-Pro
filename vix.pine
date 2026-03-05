@@ -1,8 +1,8 @@
 //@version=6
-indicator("VIX Term Structure Pro [v7.9]", overlay=false, max_lines_count=500, calc_bars_count=1000)
+indicator("VIX Term Structure Pro [v7.10]", overlay=false, max_lines_count=500, calc_bars_count=1000)
 
 // ╔════════════════════════════════════════════════════════════════════════════╗
-// ║                    VIX Term Structure Pro v7.9 使用指南                      ║
+// ║                    VIX Term Structure Pro v7.10 使用指南                     ║
 // ╠════════════════════════════════════════════════════════════════════════════╣
 // ║ 📊 仪表盘指标解读                                                           ║
 // ║----------------------------------------------------------------------------║
@@ -92,8 +92,8 @@ manual_trend_src = input.symbol("SP:SPX", "Manual Trend Source", group=grp_data,
 // ────────────────────────────────────────────────────────────────────────────
 grp_strategy = "⚠️ Strategy Mode (核心设置)"
 sens_mode = input.string("Low (Trend/Safe)", "Signal Sensitivity", options=["High (Scalping)", "Normal (Swing)", "Low (Trend/Safe)"], group=grp_strategy, tooltip="High: 高敏感度 Sensitive (短线 scalping)\nNormal: 平衡 Balanced (波段 swing)\nLow: 保守 Conservative (趋势 trend)")
-use_trend_filter = input.bool(true, "🛡️ Market Trend Filter", group=grp_strategy, tooltip="ON: 熊市过滤 BUY DIP Filter in bear market\n仅 STRONG BUY 不受限制 Only STRONG BUY allowed")
-auto_detect_index = input.bool(true, "Auto-Detect Index (Based on Chart)", group=grp_strategy, tooltip="ON: 自动检测 Auto-detect (QQQ→NDX, 其他→SPX)\nOFF: 使用手动趋势源 Use manual trend source")
+use_trend_filter = input.bool(true, "🛡️ Market Trend Filter", group=grp_strategy, tooltip="ON: 熊市过滤信号展示 Filter signal display in bear market\n    • BUY DIP → NO TRADE（被过滤 filtered）\n    • STRONG BUY / CRASH BUY 不受限制 Not filtered\n    • Score 不受影响 Score unchanged\nOFF: 所有信号正常显示 All signals shown")
+auto_detect_index = input.bool(true, "Auto-Detect Index (Based on Chart)", group=grp_strategy, tooltip="ON: 自动检测 Auto-detect (QQQ→NDX, IWM→RUT, 其他→SPX)\n    • 影响趋势过滤和统计收益 Affects trend filter & stats returns\n    • 不影响 Score（纯VIX结构） Score unchanged (pure VIX)\nOFF: 使用手动趋势源 Use manual trend source")
 
 // 自适应趋势过滤器设置 (v7.1 新增)
 trend_ma_mode = input.string("Adaptive", "Trend MA Mode", options=["Fixed", "Adaptive", "KAMA"], group=grp_strategy, tooltip="Fixed: 固定均线 Fixed MA\nAdaptive: 波动自适应 Vol-adaptive\nKAMA: 效率自适应 Efficiency-adaptive")
@@ -308,10 +308,16 @@ vix_basis = valid_data and vx1 != 0 ? ((vix / vx1) - 1) * 100 : 0.0
 has_sufficient_data = bar_index >= adapt_lookback
 
 // 自适应阈值计算（带 warmup 保护）
-vix_basis_pct_high = has_sufficient_data ? ta.percentile_linear_interpolation(vix_basis, adapt_lookback, 90) : 5.0
-vix_basis_pct_low = has_sufficient_data ? ta.percentile_linear_interpolation(vix_basis, adapt_lookback, 10) : -3.0
-pcr_pct_high = has_sufficient_data ? ta.percentile_linear_interpolation(pcr, adapt_lookback, 90) : 1.20
-pcr_pct_low = has_sufficient_data ? ta.percentile_linear_interpolation(pcr, adapt_lookback, 10) : 0.70
+// v7.10: ta.percentile_linear_interpolation 必须每根K线调用，先算再选
+vix_basis_pct_raw_high = ta.percentile_linear_interpolation(vix_basis, adapt_lookback, 90)
+vix_basis_pct_raw_low  = ta.percentile_linear_interpolation(vix_basis, adapt_lookback, 10)
+pcr_pct_raw_high       = ta.percentile_linear_interpolation(pcr, adapt_lookback, 90)
+pcr_pct_raw_low        = ta.percentile_linear_interpolation(pcr, adapt_lookback, 10)
+
+vix_basis_pct_high = has_sufficient_data ? vix_basis_pct_raw_high : 5.0
+vix_basis_pct_low  = has_sufficient_data ? vix_basis_pct_raw_low  : -3.0
+pcr_pct_high       = has_sufficient_data ? pcr_pct_raw_high       : 1.20
+pcr_pct_low        = has_sufficient_data ? pcr_pct_raw_low        : 0.70
 
 // 根据设置选择阈值模式
 is_basis_panic = use_adaptive_thresholds ? (vix_basis > vix_basis_pct_high) : (vix_basis > 5)
@@ -331,7 +337,8 @@ z_momentum_bearish = z_roc > z_momentum_neutral_zone   // Z 在上升超过阈�
 z_momentum_flat = math.abs(z_roc) <= z_momentum_neutral_zone  // 中性区域
 
 // 周线 MTF 确认 (v7.7: 统一 lookahead 策略)
-z_weekly = request.security(syminfo.tickerid, "W", z, lookahead=lookahead_setting, ignore_invalid_symbol=true)
+// v7.10: 使用 SPX 日历对齐（VIX 为 SPX 衍生品），确保跨图表一致性
+z_weekly = request.security("SP:SPX", "W", z, lookahead=lookahead_setting, ignore_invalid_symbol=true)
 // v7.9: 当 MTF 确认开启但周线数据不可用时，不允许信号通过（更保守）
 is_weekly_buy_aligned = not na(z_weekly) ? z_weekly < -thresh_mid : not use_mtf_confirm
 is_weekly_sell_aligned = not na(z_weekly) ? z_weekly > thresh_mid : not use_mtf_confirm
@@ -381,6 +388,8 @@ vol_visual_boost = is_vol_spike ? 1.2 : 1.0
 var float score = 0.0
 
 // 使用模块化评分函数
+// v7.10: Score 为纯 VIX 结构客观评分，不再包含趋势惩罚
+// 趋势过滤仅影响信号展示（BUY DIP → NO TRADE），不改变 Score
 score := calc_z_score_points(z, thresh_mid, thresh_strong) +
          calc_contango_points(contango_pct) +
          calc_basis_points(is_basis_panic, is_basis_calm) +
@@ -391,8 +400,7 @@ score := calc_z_score_points(z, thresh_mid, thresh_strong) +
          (use_momentum_confirm and z < -thresh_mid and z_momentum_bullish ? 1 : 0) +
          (use_momentum_confirm and z > thresh_mid and z_momentum_bearish ? -1 : 0) +
          (use_mtf_confirm and z < -thresh_mid and is_weekly_buy_aligned ? 1 : 0) +
-         (use_mtf_confirm and z > thresh_mid and is_weekly_sell_aligned ? -1 : 0) +
-         (use_trend_filter and not is_bull_market ? -2 : 0)
+         (use_mtf_confirm and z > thresh_mid and is_weekly_sell_aligned ? -1 : 0)
 
 // ========== 5. 三级买入信号 (v7.0 新增, v7.3 优化) ==========
 // 基于 Score 评级的信号触发（首次进入该评级时触发）
@@ -468,17 +476,21 @@ strong_buy_count = math.round(math.sum(strong_buy_num, stats_lookback_bars))
 buy_dip_count = math.round(math.sum(buy_dip_num, stats_lookback_bars))
 sell_count = math.round(math.sum(sell_signal_num, stats_lookback_bars))
 
-// 计算信号后分级回报（使用 SPX 收益作为参考）
+// v7.10: 统计收益使用对应指数（Auto-Detect: QQQ→NDX, IWM→RUT, 其他→SPX）
+// 确保过滤逻辑和统计口径一致
+auto_ref_close = is_russell_chart ? rut_close : is_nasdaq_chart ? ndx_close : spx_close
+ref_close = auto_detect_index ? auto_ref_close : (not na(manual_close) ? manual_close : spx_close)
+
 // 回报计算：信号发出后 N 天的收益
-crash_spx_return = not na(spx_close) and not na(spx_close[crash_return_bars]) ? (spx_close - spx_close[crash_return_bars]) / spx_close[crash_return_bars] * 100 : 0.0
-strong_spx_return = not na(spx_close) and not na(spx_close[strong_return_bars]) ? (spx_close - spx_close[strong_return_bars]) / spx_close[strong_return_bars] * 100 : 0.0
-dip_spx_return = not na(spx_close) and not na(spx_close[dip_return_bars]) ? (spx_close - spx_close[dip_return_bars]) / spx_close[dip_return_bars] * 100 : 0.0
+crash_ref_return = not na(ref_close) and not na(ref_close[crash_return_bars]) ? (ref_close - ref_close[crash_return_bars]) / ref_close[crash_return_bars] * 100 : 0.0
+strong_ref_return = not na(ref_close) and not na(ref_close[strong_return_bars]) ? (ref_close - ref_close[strong_return_bars]) / ref_close[strong_return_bars] * 100 : 0.0
+dip_ref_return = not na(ref_close) and not na(ref_close[dip_return_bars]) ? (ref_close - ref_close[dip_return_bars]) / ref_close[dip_return_bars] * 100 : 0.0
 
 // v7.7: 滚动窗口收益统计
 // 仅当 N 天前有信号时，才计入当前收益
-crash_return_contrib = final_crash_buy[crash_return_bars] ? crash_spx_return : 0.0
-strong_return_contrib = final_strong_buy[strong_return_bars] ? strong_spx_return : 0.0
-dip_return_contrib = final_buy_dip[dip_return_bars] ? dip_spx_return : 0.0
+crash_return_contrib = final_crash_buy[crash_return_bars] ? crash_ref_return : 0.0
+strong_return_contrib = final_strong_buy[strong_return_bars] ? strong_ref_return : 0.0
+dip_return_contrib = final_buy_dip[dip_return_bars] ? dip_ref_return : 0.0
 
 // 滚动窗口内的收益总和
 crash_buy_return_sum = math.sum(crash_return_contrib, stats_lookback_bars)
