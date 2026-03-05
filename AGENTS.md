@@ -7,10 +7,10 @@
 | Attribute | Value |
 |-----------|-------|
 | **Type** | TradingView Pine Script v6 Indicator |
-| **Main File** | `vix.pine` (~812 lines) |
+| **Main File** | `vix.pine` (~825 lines) |
 | **Purpose** | Multi-factor VIX term structure analysis with buy/sell signals |
 | **Language** | Pine Script (TradingView DSL) |
-| **Version** | v7.9 |
+| **Version** | v7.10 |
 
 ## Build / Lint / Test Commands
 
@@ -85,6 +85,36 @@ lookahead_setting = is_no_repaint_mode ? barmerge.lookahead_off : barmerge.looka
 
 vix = request.security(sym_vix_input, vix_tf, close, 
     lookahead=lookahead_setting, ignore_invalid_symbol=true)
+```
+
+### ta.* Functions: No Conditional Calls (CW10003)
+
+`ta.*` functions must execute on **every bar** to maintain consistent history. Never put them inside ternary operators or `if` scopes.
+
+```pine
+// ❌ WRONG — ta.* inside ternary, history gaps cause incorrect values
+pct_high = has_data ? ta.percentile_linear_interpolation(src, len, 90) : 5.0
+
+// ✅ CORRECT — call every bar, then select
+pct_high_raw = ta.percentile_linear_interpolation(src, len, 90)
+pct_high = has_data ? pct_high_raw : 5.0
+```
+
+Applies to: `ta.sma`, `ta.ema`, `ta.stdev`, `ta.highest`, `ta.lowest`, `ta.percentile_*`, and any `ta.*` that references historical series.
+
+### Multi-line Expressions
+
+Pine Script multi-line continuation is fragile. **Prefer single-line or split into intermediate variables** over relying on indentation-based continuation.
+
+```pine
+// ❌ RISKY — multi-line ternary may fail with "end of line without line continuation"
+ref = condition_a ? 
+      (condition_b ? val_b : val_c) : 
+      val_d
+
+// ✅ SAFE — split into intermediate variable
+inner = condition_b ? val_b : val_c
+ref = condition_a ? inner : val_d
 ```
 
 ## Error Handling
