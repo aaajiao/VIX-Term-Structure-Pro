@@ -1,4 +1,4 @@
-# VIX Term Structure Pro v7.10
+# VIX Term Structure Pro v7.11
 
 [![TradingView](https://img.shields.io/badge/TradingView-Indicator-blue?logo=tradingview)](https://www.tradingview.com/scripts/)
 [![Pine Script](https://img.shields.io/badge/Pine%20Script-v6-brightgreen)](https://www.tradingview.com/pine-script-reference/v6/)
@@ -43,32 +43,47 @@ Designed for phone screens.
 | Row | Content | Example |
 |:--|:--|:--|
 | **1** | **Signal + Score** | `🟢 STRONG BUY +5` |
-| **2** | **VIX Status** | `🟡 VIX:18 NORMAL` |
+| **2** | **Alert Mode + VIX** | `CONFIRMED / 18.2ʳᵗ` |
 
 *(If filtered, Row 1 shows reason: `✋ WAIT: Need ≥4`)*
 
-#### 🖥️ Full Mode (13 Rows)
+#### 🖥️ Full Mode (14 Rows)
 Comprehensive market analysis.
 
 | Section | Content |
 |:--|:--|
 | **HEADER** | Title + Mode (`🛡️SAFE` or `⚠️PREVIEW`) |
 | **SIGNAL** | **Current Signal** + **Score Progress Bar** (█░░░░) |
-| **MARKET** | Trend Status (SPX/NDX/RUT) + VIX Regime + Volume Status |
+| **MARKET** | Trend Status (SPX/NDX/RUT) + VIX Regime + Alert Mode + Volume Status |
 | **STRUCTURE** | Term Structure Z-Score + Contango % |
 | **STATS** | Historical Signal Stats: `🚨3 +8.2% 🟢5 +4.1% / 🟡12 +1.8%` |
 
 ### 🔔 Smart Alert System
 
-The system uses a **Level (Lv1-3)** priority mechanism with **Adaptive Cooldown**.
+The system uses a **Level (Lv1-3)** priority mechanism with **Adaptive Cooldown** measured in chart bars.
+
+#### Alert Timing Modes
+
+- **Confirmed Daily Structure** (default): Alerts only when the daily VIX structure inputs are confirmed. This may still arrive after the regular close if TradingView receives late daily source updates. Messages are tagged with `[CONFIRMED]`.
+- **Preview / Earliest Possible**: Keeps the earliest-possible behavior. If `VIX Timeframe = Chart`, only VIX is chart-timeframe; the rest of the structure inputs can still be daily, so messages are tagged as preview and may say `hybrid daily+chart`.
+- **Dashboard label**: `PREVIEW*` means hybrid preview mode, where VIX is chart-timeframe but other structure inputs still rely on daily confirmation.
+
+#### After-Hours Policy
+
+- **Allow if source confirms** (default): Accepts post-close alerts when confirmed daily inputs settle late.
+- **Regular Session Only**: Blocks alerts outside the regular session if you only want intraday or close-time notifications.
+
+#### Why an alert can appear after the close
+
+This indicator's score depends on several daily external sources such as `CBOE:VIX`, `CBOE:VX1!`, `CBOE:VX2!`, `CBOE:SKEW`, `INDEX:CPCI`, and optional `CBOE:VVIX`. Those feeds are not guaranteed to finalize at the exact same moment as the chart close, so a `[CONFIRMED]` alert can legitimately arrive after the market close when TradingView refreshes those daily values.
 
 #### Trigger Scenarios
 
 | Scenario | Trigger | Example Output |
 |:--|:--|:--|
-| **First Entry** | Signal appears | `SPY: 🟡 BUY DIP +4 ...` |
-| **Upgrade ⬆️** | Signal gets stronger | `SPY: 🟢 STRONG BUY +5 ⬆️ ...` |
-| **Downgrade ⬇️** | Signal gets weaker | `SPY: 🟡 BUY DIP +4 ⬇️ ...` |
+| **First Entry** | Signal appears | `SPY: 🟢 BUY [CONFIRMED] [Lv2] ...` |
+| **Upgrade ⬆️** | Signal gets stronger | `SPY: 🟢 BUY [PREVIEW] [Lv2]⬆️ ...` |
+| **Post-Close Confirm** | Daily sources finalize late | `SPY: 🟢 BUY [CONFIRMED] [Lv1] ... | Confirmed source update after close` |
 
 #### Adaptive Cooldown
 
@@ -79,15 +94,22 @@ The system uses a **Level (Lv1-3)** priority mechanism with **Adaptive Cooldown*
 #### Alert Message Format
 
 ```text
-Symbol: [Signal] [Level] [Direction] | [Context]
-------------------------------------------------
-SPY: 🟢 STRONG BUY [Lv2] ⬆️ | Score:5.2 Z:-2.1 VIX:19(NORM)
-QQQ: ✋ WAIT (High Vol)     | Score:4.0 Z:-1.8 VIX:28(HIGH)
+Symbol: [Side] [Timing] [Level][Upgrade] | [Context]
+----------------------------------------------------
+SPY: 🟢 BUY [CONFIRMED] [Lv2] → 🟢STRONG | Score:5.2 Z:-2.1 VIX:19(NORM) | Confirmed
+QQQ: 🟢 BUY [PREVIEW] [Lv1]⬆️ → 🟡DIP | Score:4.0 Z:-1.8 VIX:28(HIGH) | Hybrid preview daily+chart
 ```
 
 ### 📝 Changelog
 
-#### v7.10 (Current)
+#### v7.11 (Current)
+- **🔔 Alert Timing Audit**:
+  - Added explicit `Alert Timing Mode`: `Confirmed Daily Structure` vs `Preview / Earliest Possible`.
+  - Added `After-Hours Alert Policy` with `Allow if source confirms` and `Regular Session Only`.
+  - Alert messages now include `[CONFIRMED]` / `[PREVIEW]` tags and call out post-close source updates.
+  - Dashboard now exposes the active alert mode to make hybrid preview behavior visible.
+
+#### v7.10
 - **📊 Cross-Chart Score Consistency**:
   - Score is now a **pure VIX structure metric** — identical across all chart symbols (QQQ, SPY, IWM, etc.).
   - Removed `-2` trend penalty from Score. Trend filter now only affects signal display (BUY DIP → NO TRADE).
