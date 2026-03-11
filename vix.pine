@@ -1,5 +1,6 @@
 //@version=6
-indicator("VIX Term Structure Pro [v7.11]", overlay=false, max_lines_count=500, calc_bars_count=1000)
+// calc_bars_count uses a fixed 5000-bar execution window to stay within Pine's common historical buffer.
+indicator("VIX Term Structure Pro [v7.11]", overlay=false, max_lines_count=500, calc_bars_count=5000)
 
 // ╔════════════════════════════════════════════════════════════════════════════╗
 // ║                    VIX Term Structure Pro v7.11 使用指南                     ║
@@ -42,11 +43,11 @@ calc_basis_points(is_panic, is_calm) =>
 calc_skew_points(is_high, is_low) =>
     is_high ? -3 : is_low ? 1 : 0
 
-calc_pcr_points(pcr_val) =>
-    na(pcr_val) ? 0 : pcr_val > 1.20 ? 2 : pcr_val < 0.70 ? -2 : 0
+calc_pcr_points(is_panic, is_calm) =>
+    is_panic ? 2 : is_calm ? -2 : 0
 
-calc_vvix_points(vvix_val, use_vvix) =>
-    not use_vvix or na(vvix_val) ? 0 : vvix_val > 130 ? 1 : vvix_val < 80 ? -1 : 0
+calc_vvix_points(is_panic, is_calm, use_vvix) =>
+    not use_vvix ? 0 : is_panic ? 1 : is_calm ? -1 : 0
 
 // ========== v7.8: 进度条生成函数 ==========
 // 生成 Score 进度条 (-10 到 +10 范围，10格)
@@ -57,6 +58,9 @@ f_score_bar(score_val) =>
     for i = 0 to 9
         bar := bar + (i < filled ? "█" : "░")
     bar
+
+f_stats_cell(icon, evaluated_count, win_rate, avg_return, ready) =>
+    ready ? icon + str.tostring(evaluated_count) + " W" + str.tostring(win_rate, "#") + "% " + str.tostring(avg_return, "+#.#;-#.#") + "%" : icon + "N/A"
 
 // ========== KAMA 自定义实现 (Kaufman Adaptive Moving Average) ==========
 // 由于 ta.kama() 在某些环境不可用，手动实现
@@ -136,8 +140,9 @@ table_size  = input.string("Normal", "Dashboard Text Size", options=["Small", "N
 // 📊 统计与警报 (Statistics & Alerts)
 // ────────────────────────────────────────────────────────────────────────────
 grp_stats = "📊 Statistics & Alerts"
-show_signal_stats = input.bool(true, "Show Signal Statistics", group=grp_stats, tooltip="显示信号统计 Show signal statistics")
-stats_lookback_years = input.int(3, "Stats Lookback (Years)", minval=1, maxval=20, group=grp_stats, tooltip="统计回溯年数 Stats lookback years\n仅统计此范围内信号 Only count signals within range")
+show_signal_stats = input.bool(true, "Show Signal Statistics", group=grp_stats, tooltip="显示信号统计 Show signal statistics\n仅 1D 图表显示胜率和收益 Win-rate stats only show on 1D charts")
+// 19*252 + 60 = 4848, which stays within the 5000-bar execution / buffer budget. 20Y would exceed it.
+stats_lookback_years = input.int(3, "Stats Lookback (Years)", minval=1, maxval=19, group=grp_stats, tooltip="统计回溯年数 Stats lookback years\n仅统计此范围内信号 Only count signals within range\n上限19年以避免超过5000 bars 19Y max keeps stats inside 5000 bars")
 crash_return_bars = input.int(40, "🚨 CRASH Return Period (Bars)", minval=10, maxval=60, group=grp_stats, tooltip="CRASH信号收益周期 CRASH return period\n约2个月 ~2 months")
 strong_return_bars = input.int(20, "🟢 STRONG Return Period (Bars)", minval=10, maxval=40, group=grp_stats, tooltip="STRONG信号收益周期 STRONG return period\n约1个月 ~1 month")
 dip_return_bars = input.int(10, "🟡 DIP Return Period (Bars)", minval=5, maxval=20, group=grp_stats, tooltip="DIP信号收益周期 DIP return period\n约2周 ~2 weeks")
@@ -325,6 +330,8 @@ pcr_pct_low        = has_sufficient_data ? pcr_pct_raw_low        : 0.70
 // 根据设置选择阈值模式
 is_basis_panic = use_adaptive_thresholds ? (vix_basis > vix_basis_pct_high) : (vix_basis > 5)
 is_basis_calm  = use_adaptive_thresholds ? (vix_basis < vix_basis_pct_low) : (vix_basis < -3)
+is_pcr_panic = not na(pcr) and (use_adaptive_thresholds ? (pcr > pcr_pct_high) : (pcr > 1.20))
+is_pcr_calm  = not na(pcr) and (use_adaptive_thresholds ? (pcr < pcr_pct_low) : (pcr < 0.70))
 
 is_high_vol = valid_data and (vix > vol_thresh)
 lookback    = use_adaptive ? (is_high_vol ? len_high : len_low) : len_low
@@ -386,6 +393,7 @@ is_vol_spike  = vx1_vol >= vol_ma * 2.5
 is_vol_high   = vx1_vol >= vol_ma * 1.5 
 col_vol = is_vol_spike ? color.new(color.yellow, 30) : is_vol_high ? color.new(color.aqua, 60) : color.new(color.gray, 90)
 vol_visual_boost = is_vol_spike ? 1.2 : 1.0 
+has_core_panic_confirmation = contango_pct < 0 or is_basis_panic or is_pcr_panic or is_vol_spike or (use_vvix and is_vvix_panic)
 
 // ========== 4. AI 信号算法 (Enhanced v7.0 - 模块化) ==========
 var float score = 0.0
@@ -397,8 +405,8 @@ score := calc_z_score_points(z, thresh_mid, thresh_strong) +
          calc_contango_points(contango_pct) +
          calc_basis_points(is_basis_panic, is_basis_calm) +
          calc_skew_points(is_skew_high, is_skew_low) +
-         calc_pcr_points(pcr) +
-         calc_vvix_points(vvix, use_vvix) +
+         calc_pcr_points(is_pcr_panic, is_pcr_calm) +
+         calc_vvix_points(is_vvix_panic, is_vvix_calm, use_vvix) +
          (is_vol_spike and z < -thresh_mid ? 1 : 0) +
          (use_momentum_confirm and z < -thresh_mid and z_momentum_bullish ? 1 : 0) +
          (use_momentum_confirm and z > thresh_mid and z_momentum_bearish ? -1 : 0) +
@@ -457,7 +465,7 @@ is_signal_allowed = use_trend_filter ? is_bull_market : true
 // 最终信号（用于 Alert 和图表标签）
 final_crash_buy = is_crash_buy  // CRASH BUY 不受趋势过滤限制
 final_strong_buy = is_strong_buy  // STRONG BUY 不受趋势过滤限制
-final_buy_dip = is_buy_dip and is_signal_allowed  // BUY DIP 受趋势过滤 + v7.3 增强过滤
+final_buy_dip = is_buy_dip and is_signal_allowed and z < -thresh_mid and has_core_panic_confirmation  // BUY DIP 需核心恐慌确认
 
 final_buy_signal = final_crash_buy or final_strong_buy or final_buy_dip
 final_sell_signal = is_euphoria_sell or is_strong_sell or is_sell_hedge
@@ -485,7 +493,7 @@ var int last_confirmed_buy_dip_bar = 0
 confirmed_sell_hedge_cooldown_ok = bar_index - last_confirmed_sell_hedge_bar > signal_display_cooldown
 confirmed_buy_dip_cooldown_ok = bar_index - last_confirmed_buy_dip_bar > signal_display_cooldown
 confirmed_sell_hedge = confirmed_sell_hedge_base and vix_regime != 1 and is_sell_hedge_momentum_ok and confirmed_sell_hedge_cooldown_ok
-confirmed_buy_dip = confirmed_buy_dip_base and vix_regime != 3 and is_buy_dip_momentum_ok and confirmed_buy_dip_cooldown_ok and is_signal_allowed
+confirmed_buy_dip = confirmed_buy_dip_base and vix_regime != 3 and is_buy_dip_momentum_ok and confirmed_buy_dip_cooldown_ok and is_signal_allowed and z < -thresh_mid and has_core_panic_confirmation
 
 if confirmed_sell_hedge
     last_confirmed_sell_hedge_bar := bar_index
@@ -505,19 +513,15 @@ after_hours_confirmed_note = not is_alert_preview_mode and not regular_session_b
 // ========== 6. 信号统计 (v7.0 新增, v7.7 改为滚动窗口) ==========
 // v7.7: 使用 math.sum() 滚动窗口统计，替代累积计数
 // 这确保统计始终反映"最近 N 年"的数据，不会随时间漂移
+is_stats_daily_chart = timeframe.isdaily and timeframe.multiplier == 1
 stats_lookback_bars = stats_lookback_years * 252
+stats_max_hold_bars = math.max(crash_return_bars, math.max(strong_return_bars, dip_return_bars))
+stats_ready = is_stats_daily_chart and bar_index >= stats_lookback_bars + stats_max_hold_bars
 
-// 将布尔信号转换为数值（0/1）用于 math.sum
-crash_buy_num = final_crash_buy ? 1 : 0
-strong_buy_num = final_strong_buy ? 1 : 0
-buy_dip_num = final_buy_dip ? 1 : 0
-sell_signal_num = final_sell_signal ? 1 : 0
-
-// 滚动窗口统计信号次数
-crash_buy_count = math.round(math.sum(crash_buy_num, stats_lookback_bars))
-strong_buy_count = math.round(math.sum(strong_buy_num, stats_lookback_bars))
-buy_dip_count = math.round(math.sum(buy_dip_num, stats_lookback_bars))
-sell_count = math.round(math.sum(sell_signal_num, stats_lookback_bars))
+// 统计只使用 1D 图表上的 confirmed 买入信号，避免 intraday 展开的 HTF 数据扭曲胜率。
+stats_crash_buy = final_crash_buy and barstate.isconfirmed
+stats_strong_buy = final_strong_buy and barstate.isconfirmed
+stats_buy_dip = final_buy_dip and barstate.isconfirmed
 
 // v7.10: 统计收益使用对应指数（Auto-Detect: QQQ→NDX, IWM→RUT, 其他→SPX）
 // 确保过滤逻辑和统计口径一致
@@ -531,28 +535,36 @@ dip_ref_return = not na(ref_close) and not na(ref_close[dip_return_bars]) ? (ref
 
 // v7.7: 滚动窗口收益统计
 // 仅当 N 天前有信号时，才计入当前收益
-crash_return_contrib = final_crash_buy[crash_return_bars] ? crash_ref_return : 0.0
-strong_return_contrib = final_strong_buy[strong_return_bars] ? strong_ref_return : 0.0
-dip_return_contrib = final_buy_dip[dip_return_bars] ? dip_ref_return : 0.0
+crash_eval_num = stats_crash_buy[crash_return_bars] ? 1 : 0
+strong_eval_num = stats_strong_buy[strong_return_bars] ? 1 : 0
+dip_eval_num = stats_buy_dip[dip_return_bars] ? 1 : 0
+crash_win_num = stats_crash_buy[crash_return_bars] and crash_ref_return > 0 ? 1 : 0
+strong_win_num = stats_strong_buy[strong_return_bars] and strong_ref_return > 0 ? 1 : 0
+dip_win_num = stats_buy_dip[dip_return_bars] and dip_ref_return > 0 ? 1 : 0
+crash_return_contrib = stats_crash_buy[crash_return_bars] ? crash_ref_return : 0.0
+strong_return_contrib = stats_strong_buy[strong_return_bars] ? strong_ref_return : 0.0
+dip_return_contrib = stats_buy_dip[dip_return_bars] ? dip_ref_return : 0.0
 
 // 滚动窗口内的收益总和
 crash_buy_return_sum = math.sum(crash_return_contrib, stats_lookback_bars)
 strong_buy_return_sum = math.sum(strong_return_contrib, stats_lookback_bars)
 buy_dip_return_sum = math.sum(dip_return_contrib, stats_lookback_bars)
 
-// 滚动窗口内有效收益的信号计数（用于计算平均值）
-crash_return_count_num = final_crash_buy[crash_return_bars] ? 1 : 0
-strong_return_count_num = final_strong_buy[strong_return_bars] ? 1 : 0
-dip_return_count_num = final_buy_dip[dip_return_bars] ? 1 : 0
-
-crash_buy_return_count = math.round(math.sum(crash_return_count_num, stats_lookback_bars))
-strong_buy_return_count = math.round(math.sum(strong_return_count_num, stats_lookback_bars))
-buy_dip_return_count = math.round(math.sum(dip_return_count_num, stats_lookback_bars))
+// 滚动窗口内只统计已经走完持有周期的样本。
+crash_buy_evaluated_count = math.round(math.sum(crash_eval_num, stats_lookback_bars))
+strong_buy_evaluated_count = math.round(math.sum(strong_eval_num, stats_lookback_bars))
+buy_dip_evaluated_count = math.round(math.sum(dip_eval_num, stats_lookback_bars))
+crash_buy_win_count = math.round(math.sum(crash_win_num, stats_lookback_bars))
+strong_buy_win_count = math.round(math.sum(strong_win_num, stats_lookback_bars))
+buy_dip_win_count = math.round(math.sum(dip_win_num, stats_lookback_bars))
 
 // 计算平均收益
-crash_buy_avg_return = crash_buy_return_count > 0 ? crash_buy_return_sum / crash_buy_return_count : 0.0
-strong_buy_avg_return = strong_buy_return_count > 0 ? strong_buy_return_sum / strong_buy_return_count : 0.0
-buy_dip_avg_return = buy_dip_return_count > 0 ? buy_dip_return_sum / buy_dip_return_count : 0.0
+crash_buy_avg_return = crash_buy_evaluated_count > 0 ? crash_buy_return_sum / crash_buy_evaluated_count : 0.0
+strong_buy_avg_return = strong_buy_evaluated_count > 0 ? strong_buy_return_sum / strong_buy_evaluated_count : 0.0
+buy_dip_avg_return = buy_dip_evaluated_count > 0 ? buy_dip_return_sum / buy_dip_evaluated_count : 0.0
+crash_buy_win_rate = crash_buy_evaluated_count > 0 ? crash_buy_win_count * 100.0 / crash_buy_evaluated_count : 0.0
+strong_buy_win_rate = strong_buy_evaluated_count > 0 ? strong_buy_win_count * 100.0 / strong_buy_evaluated_count : 0.0
+buy_dip_win_rate = buy_dip_evaluated_count > 0 ? buy_dip_win_count * 100.0 / buy_dip_evaluated_count : 0.0
 
 // 最终信号翻译
 signal_txt = ""
@@ -574,6 +586,10 @@ else if score >= min_score_buy
         signal_emoji := "✋"
     else if use_momentum_confirm and not is_buy_dip_momentum_ok
         signal_txt := "✋ WAIT (Mom)"
+        signal_col := color.gray
+        signal_emoji := "✋"
+    else if not has_core_panic_confirmation
+        signal_txt := "✋ WAIT (Core)"
         signal_col := color.gray
         signal_emoji := "✋"
     else
@@ -742,24 +758,30 @@ if show_table and barstate.islast
         table.cell(panel, 1, 10, contango_emoji + str.tostring(contango_pct, "#.#") + "%", bgcolor=c_row, text_color=contango_col, text_halign=text.align_right, text_size=t_size)
         
         // --- Row 11: STATS 分组标题 ---
-        table.cell(panel, 0, 11, "STATS (" + str.tostring(stats_lookback_years) + "Y)", bgcolor=c_group, text_color=c_label, text_halign=text.align_left, text_size=size.tiny)
+        stats_header = is_stats_daily_chart ? "STATS (" + str.tostring(stats_lookback_years) + "Y)" : "STATS (1D)"
+        table.cell(panel, 0, 11, stats_header, bgcolor=c_group, text_color=c_label, text_halign=text.align_left, text_size=size.tiny)
         table.cell(panel, 1, 11, "", bgcolor=c_group, text_color=c_label, text_size=size.tiny)
         
         // --- Row 12: CRASH + STRONG 统计 ---
         if show_signal_stats
-            // 格式: 🚨3 +8.2%  🟢5 +4.1%
-            crash_ret_str = str.tostring(crash_buy_avg_return, "+#.#;-#.#") + "%"
-            strong_ret_str = str.tostring(strong_buy_avg_return, "+#.#;-#.#") + "%"
-            stats_left = "🚨" + str.tostring(crash_buy_count) + " " + crash_ret_str
-            stats_right = "🟢" + str.tostring(strong_buy_count) + " " + strong_ret_str
-            table.cell(panel, 0, 12, stats_left, bgcolor=c_row, text_color=crash_buy_avg_return >= 0 ? color.lime : color.red, text_halign=text.align_left, text_size=t_size)
-            table.cell(panel, 1, 12, stats_right, bgcolor=c_row, text_color=strong_buy_avg_return >= 0 ? color.lime : color.red, text_halign=text.align_right, text_size=t_size)
+            if not is_stats_daily_chart
+                table.cell(panel, 0, 12, "1D ONLY", bgcolor=c_row, text_color=c_label, text_halign=text.align_left, text_size=t_size)
+                table.cell(panel, 1, 12, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
+                table.cell(panel, 0, 13, "Use daily chart", bgcolor=c_row, text_color=c_label, text_halign=text.align_left, text_size=t_size)
+                table.cell(panel, 1, 13, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
+            else
+                stats_left = f_stats_cell("🚨", crash_buy_evaluated_count, crash_buy_win_rate, crash_buy_avg_return, stats_ready)
+                stats_right = f_stats_cell("🟢", strong_buy_evaluated_count, strong_buy_win_rate, strong_buy_avg_return, stats_ready)
+                stats_dip = f_stats_cell("🟡", buy_dip_evaluated_count, buy_dip_win_rate, buy_dip_avg_return, stats_ready)
+                crash_col = stats_ready ? (crash_buy_avg_return >= 0 ? color.lime : color.red) : c_label
+                strong_col = stats_ready ? (strong_buy_avg_return >= 0 ? color.lime : color.red) : c_label
+                dip_col = stats_ready ? (buy_dip_avg_return >= 0 ? color.lime : color.red) : c_label
+                table.cell(panel, 0, 12, stats_left, bgcolor=c_row, text_color=crash_col, text_halign=text.align_left, text_size=t_size)
+                table.cell(panel, 1, 12, stats_right, bgcolor=c_row, text_color=strong_col, text_halign=text.align_right, text_size=t_size)
             
-            // --- Row 13: BUY DIP 统计 ---
-            dip_ret_str = str.tostring(buy_dip_avg_return, "+#.#;-#.#") + "%"
-            stats_dip = "🟡" + str.tostring(buy_dip_count) + " " + dip_ret_str
-            table.cell(panel, 0, 13, stats_dip, bgcolor=c_row, text_color=buy_dip_avg_return >= 0 ? color.lime : color.red, text_halign=text.align_left, text_size=t_size)
-            table.cell(panel, 1, 13, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
+                // --- Row 13: BUY DIP 统计 ---
+                table.cell(panel, 0, 13, stats_dip, bgcolor=c_row, text_color=dip_col, text_halign=text.align_left, text_size=t_size)
+                table.cell(panel, 1, 13, stats_ready ? "N=Evaluated" : "Need full window", bgcolor=c_row, text_color=c_label, text_halign=text.align_right, text_size=size.tiny)
         else
             table.cell(panel, 0, 12, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
             table.cell(panel, 1, 12, "", bgcolor=c_row, text_color=c_label, text_size=t_size)

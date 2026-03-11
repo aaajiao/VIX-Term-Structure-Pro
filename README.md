@@ -21,6 +21,7 @@ Current script:
 - Main file: `vix.pine`
 - Pine version: `//@version=6`
 - Indicator title: `VIX Term Structure Pro [v7.11]`
+- Historical execution window: `calc_bars_count=5000`
 - Primary use case: SPY / QQQ / IWM / index charts on TradingView
 
 ## Repository Layout
@@ -48,6 +49,8 @@ The score combines objective VIX structure factors:
 - VX1 volume spike / high volume context
 - Optional momentum confirmation
 - Optional weekly MTF alignment
+
+When adaptive thresholds are enabled, PCR percentile thresholds now feed the score directly. When VVIX integration is enabled, the selected `VVIX Threshold Mode` also feeds the score directly.
 
 Trend is not part of the score. Trend only affects:
 
@@ -96,6 +99,7 @@ These are display states, not separate score formulas:
 |:--|:--|
 | `✋ WAIT (Vol)` | Buy score is high enough, but volatility regime is too risky |
 | `✋ WAIT (Mom)` | Buy score is high enough, but momentum confirmation failed |
+| `✋ WAIT (Core)` | Buy score is high enough, but no core panic confirmation is present |
 | `☕ HOLD (Vol)` | Sell score is low enough, but volatility regime does not justify selling |
 | `✋ HOLD (Mom)` | Sell score is low enough, but momentum confirmation failed |
 | `🚫 NO TRADE` | Buy-side setup is filtered by bear trend when trend filter is enabled |
@@ -108,6 +112,16 @@ There are two separate ideas in the script:
 - `Alert Timing Mode`: controls whether smart alerts are preview-style or confirmation-style
 
 They are intentionally no longer treated as the same thing.
+
+### Statistics Model
+
+Rolling statistics are intentionally limited to exact `1D` charts.
+
+- non-`1D` charts display `1D ONLY` instead of win-rate numbers
+- only confirmed buy signals are counted
+- only evaluated samples are counted in `N`
+- `Wxx%` is the fixed-horizon win rate for completed samples
+- stats lookback is capped at `19` years because `19*252 + 60 = 4848`, which stays inside the `5000`-bar execution / buffer budget
 
 ## Smart Alerts
 
@@ -199,7 +213,7 @@ Fourteen rows:
 | Signal | Current signal + score bar |
 | Market | SPX / NDX / RUT trend, VIX regime, alert mode, volume |
 | Structure | Term structure Z + contango |
-| Stats | Rolling signal counts and average returns |
+| Stats | `1D`-only evaluated sample counts, win rate, and average returns |
 
 ### Visual Elements
 
@@ -237,7 +251,7 @@ The script can display:
 
 ### Statistics and Alerts
 
-- rolling stats lookback
+- rolling stats lookback (`1-19Y`, `1D` stats only)
 - return periods for each buy tier
 - smart alert timing mode
 - after-hours policy
@@ -261,6 +275,7 @@ Recommended for most users:
 
 - chart: `SPY`, `QQQ`, or `IWM`
 - timeframe: daily
+- use an exact `1D` chart if you want win-rate stats
 - `Trading Safe Mode = ON`
 - `Alert Timing Mode = Confirmed Daily Structure`
 - `After-Hours Alert Policy = Allow if source confirms`
@@ -287,7 +302,7 @@ Validation must be done in TradingView:
 2. Confirm the script compiles with no syntax errors.
 3. Apply it to `SPY`, `QQQ`, and `IWM`.
 4. Check dashboard layout in both `Full` and `Mobile`.
-5. Verify signal labels, trend filter behavior, and stats reference alignment.
+5. Verify signal labels, trend filter behavior, `1D` stats output, and stats reference alignment.
 6. Test smart alerts with:
    - `Confirmed Daily Structure`
    - `Preview / Earliest Possible`
@@ -322,6 +337,7 @@ Validation must be done in TradingView:
 - External daily sources may update later than the chart close.
 - `VIX Timeframe = Chart` does not make the whole model intraday; it only changes the VIX leg.
 - Statistics are rolling and reference-index based, not a full broker-grade backtest.
+- Win-rate statistics are intentionally `1D`-only.
 
 ## License
 
