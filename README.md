@@ -1,4 +1,4 @@
-# VIX Term Structure Pro v7.11
+# VIX Term Structure Pro v7.12
 
 [![TradingView](https://img.shields.io/badge/TradingView-Indicator-blue?logo=tradingview)](https://www.tradingview.com/scripts/)
 [![Pine Script](https://img.shields.io/badge/Pine%20Script-v6-brightgreen)](https://www.tradingview.com/pine-script-reference/v6/)
@@ -20,7 +20,7 @@ Current script:
 
 - Main file: `vix.pine`
 - Pine version: `//@version=6`
-- Indicator title: `VIX Term Structure Pro [v7.11]`
+- Indicator title: `VIX Term Structure Pro [v7.12]`
 - Historical execution window: `calc_bars_count=5000`
 - Primary use case: SPY / QQQ / IWM / index charts on TradingView
 
@@ -102,7 +102,23 @@ These are display states, not separate score formulas:
 | `✋ WAIT (Core)` | Buy score is high enough, but no core panic confirmation is present |
 | `☕ HOLD (Vol)` | Sell score is low enough, but volatility regime does not justify selling |
 | `✋ HOLD (Mom)` | Sell score is low enough, but momentum confirmation failed |
+| `✋ HOLD (Core)` | Sell score is low enough, but no core euphoria confirmation is present |
 | `🚫 NO TRADE` | Buy-side setup is filtered by bear trend when trend filter is enabled |
+
+### Sell Strictness
+
+Sell-side behavior now has two explicit modes:
+
+- `Balanced (Legacy)`: preserves the previous sell / hedge filtering
+- `High Win-Rate`: requires core euphoria confirmation for `🔴 STRONG SELL` and `🟠 SELL/HEDGE`
+
+Core euphoria confirmation is satisfied when at least one of these is true:
+
+- basis is calm
+- put/call ratio is calm
+- elevated SKEW
+- contango above `10%`
+- optional VVIX is calm
 
 ### Confirmation Layers
 
@@ -111,21 +127,24 @@ There are two separate ideas in the script:
 - `Confirmed Signals Only`: controls whether displayed chart signals wait for bar close
 - `Alert Timing Mode`: controls whether smart alerts are preview-style or confirmation-style
 
-They are intentionally no longer treated as the same thing.
+They are intentionally no longer treated as the same thing in v7.12.
 
 ### Statistics Model
 
 Rolling statistics are intentionally limited to exact `1D` charts.
 
 - non-`1D` charts display `1D ONLY` instead of win-rate numbers
-- only confirmed buy signals are counted
+- only confirmed final buy and sell signals are counted
 - only evaluated samples are counted in `N`
+- buy-side wins use `Ref > 0`
+- sell-side wins use `Ref <= 0`
+- sell-side average return stays raw; more negative is better for top / hedge calls
 - `Wxx%` is the fixed-horizon win rate for completed samples
 - stats lookback is capped at `19` years because `19*252 + 60 = 4848`, which stays inside the `5000`-bar execution / buffer budget
 
 ## Smart Alerts
 
-### Default Behavior in v7.11
+### Default Behavior in v7.12
 
 Default settings:
 
@@ -205,7 +224,7 @@ Two rows:
 
 ### Full Mode
 
-Fourteen rows:
+Sixteen rows:
 
 | Section | Content |
 |:--|:--|
@@ -213,7 +232,7 @@ Fourteen rows:
 | Signal | Current signal + score bar |
 | Market | SPX / NDX / RUT trend, VIX regime, alert mode, volume |
 | Structure | Term structure Z + contango |
-| Stats | `1D`-only evaluated sample counts, win rate, and average returns |
+| Stats | `1D`-only evaluated sample counts, win rate, and average returns for both buy and sell tiers |
 
 ### Visual Elements
 
@@ -238,6 +257,7 @@ The script can display:
 ### Strategy Mode
 
 - signal sensitivity: `High`, `Normal`, `Low`
+- sell signal strictness: `Balanced (Legacy)` or `High Win-Rate`
 - market trend filter
 - auto-detect index
 - trend MA mode: `Fixed`, `Adaptive`, `KAMA`
@@ -252,7 +272,7 @@ The script can display:
 ### Statistics and Alerts
 
 - rolling stats lookback (`1-19Y`, `1D` stats only)
-- return periods for each buy tier
+- return periods reused by matching buy / sell tiers
 - smart alert timing mode
 - after-hours policy
 - alert cooldown base
@@ -279,6 +299,7 @@ Recommended for most users:
 - `Trading Safe Mode = ON`
 - `Alert Timing Mode = Confirmed Daily Structure`
 - `After-Hours Alert Policy = Allow if source confirms`
+- `Sell Signal Strictness = High Win-Rate` if you want fewer, cleaner top signals
 - `Use Momentum Confirmation = ON`
 - `Use Weekly MTF Confirmation = OFF` or ON only if you want stricter filtering
 
@@ -302,14 +323,22 @@ Validation must be done in TradingView:
 2. Confirm the script compiles with no syntax errors.
 3. Apply it to `SPY`, `QQQ`, and `IWM`.
 4. Check dashboard layout in both `Full` and `Mobile`.
-5. Verify signal labels, trend filter behavior, `1D` stats output, and stats reference alignment.
+5. Verify signal labels, trend filter behavior, buy/sell `1D` stats output, and stats reference alignment.
 6. Test smart alerts with:
    - `Confirmed Daily Structure`
    - `Preview / Earliest Possible`
    - `Regular Session Only`
-7. Observe whether post-close confirmed alerts match delayed daily source updates.
+7. Switch `Sell Signal Strictness` between `Balanced (Legacy)` and `High Win-Rate` and confirm `✋ HOLD (Core)` appears when expected.
+8. Observe whether post-close confirmed alerts match delayed daily source updates.
 
 ## Current Version Highlights
+
+### v7.12
+
+- added sell-side strictness mode for higher-win-rate top signals
+- added core euphoria confirmation and `✋ HOLD (Core)` sell state
+- added sell-side rolling stats on exact `1D` charts
+- unified sell plots, alerts, and stats on final filtered sell signals
 
 ### v7.11
 

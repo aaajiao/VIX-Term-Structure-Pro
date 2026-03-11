@@ -7,10 +7,10 @@
 | Attribute | Value |
 |-----------|-------|
 | **Type** | TradingView Pine Script v6 Indicator |
-| **Main File** | `vix.pine` (~825 lines) |
+| **Main File** | `vix.pine` (~989 lines) |
 | **Purpose** | Multi-factor VIX term structure analysis with buy/sell signals |
 | **Language** | Pine Script (TradingView DSL) |
-| **Version** | v7.10 |
+| **Version** | v7.12 |
 
 ## Repository Layout
 
@@ -37,11 +37,11 @@ git add vix.pine && git commit -m "feat(v7.x): English / 中文"
 2. **Visual**: Apply to chart → verify dashboard + signals render
 3. **Backtest**: Use TradingView's built-in strategy tester
 
-### Current v7.10 Reality Check
+### Current v7.12 Reality Check
 
-- `vix.pine` is currently ~827 lines
-- Header is `indicator("VIX Term Structure Pro [v7.10]", ...)`
-- README and Chinese docs are already aligned to `v7.10`
+- `vix.pine` is currently ~989 lines
+- Header is `indicator("VIX Term Structure Pro [v7.12]", ...)`
+- README and Chinese docs are already aligned to `v7.12`
 - No local compiler/test runner exists in this repo
 
 ## Code Style Guidelines

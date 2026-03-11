@@ -1,9 +1,9 @@
 //@version=6
 // calc_bars_count uses a fixed 5000-bar execution window to stay within Pine's common historical buffer.
-indicator("VIX Term Structure Pro [v7.11]", overlay=false, max_lines_count=500, calc_bars_count=5000)
+indicator("VIX Term Structure Pro [v7.12]", overlay=false, max_lines_count=500, calc_bars_count=5000)
 
 // ╔════════════════════════════════════════════════════════════════════════════╗
-// ║                    VIX Term Structure Pro v7.11 使用指南                     ║
+// ║                    VIX Term Structure Pro v7.12 使用指南                     ║
 // ╠════════════════════════════════════════════════════════════════════════════╣
 // ║ 📊 仪表盘指标解读                                                           ║
 // ║----------------------------------------------------------------------------║
@@ -96,6 +96,7 @@ manual_trend_src = input.symbol("SP:SPX", "Manual Trend Source", group=grp_data,
 // ────────────────────────────────────────────────────────────────────────────
 grp_strategy = "⚠️ Strategy Mode (核心设置)"
 sens_mode = input.string("Low (Trend/Safe)", "Signal Sensitivity", options=["High (Scalping)", "Normal (Swing)", "Low (Trend/Safe)"], group=grp_strategy, tooltip="High: 高敏感度 Sensitive (短线 scalping)\nNormal: 平衡 Balanced (波段 swing)\nLow: 保守 Conservative (趋势 trend)")
+sell_strictness = input.string("Balanced (Legacy)", "Sell Signal Strictness", options=["Balanced (Legacy)", "High Win-Rate"], group=grp_strategy, tooltip="Balanced (Legacy): 保持当前卖出过滤 Keep current sell behavior\nHigh Win-Rate: 更少但更准 Fewer but cleaner top signals")
 use_trend_filter = input.bool(true, "🛡️ Market Trend Filter", group=grp_strategy, tooltip="ON: 熊市过滤信号展示 Filter signal display in bear market\n    • BUY DIP → NO TRADE（被过滤 filtered）\n    • STRONG BUY / CRASH BUY 不受限制 Not filtered\n    • Score 不受影响 Score unchanged\nOFF: 所有信号正常显示 All signals shown")
 auto_detect_index = input.bool(true, "Auto-Detect Index (Based on Chart)", group=grp_strategy, tooltip="ON: 自动检测 Auto-detect (QQQ→NDX, IWM→RUT, 其他→SPX)\n    • 影响趋势过滤和统计收益 Affects trend filter & stats returns\n    • 不影响 Score（纯VIX结构） Score unchanged (pure VIX)\nOFF: 使用手动趋势源 Use manual trend source")
 
@@ -394,6 +395,8 @@ is_vol_high   = vx1_vol >= vol_ma * 1.5
 col_vol = is_vol_spike ? color.new(color.yellow, 30) : is_vol_high ? color.new(color.aqua, 60) : color.new(color.gray, 90)
 vol_visual_boost = is_vol_spike ? 1.2 : 1.0 
 has_core_panic_confirmation = contango_pct < 0 or is_basis_panic or is_pcr_panic or is_vol_spike or (use_vvix and is_vvix_panic)
+has_core_euphoria_confirmation = is_basis_calm or is_pcr_calm or is_skew_high or contango_pct > 10 or (use_vvix and is_vvix_calm)
+sell_requires_core_confirmation = sell_strictness == "High Win-Rate"
 
 // ========== 4. AI 信号算法 (Enhanced v7.0 - 模块化) ==========
 var float score = 0.0
@@ -429,7 +432,7 @@ is_crash_buy = use_confirmed_signals ? (is_crash_buy_raw and barstate.isconfirme
 is_strong_buy = use_confirmed_signals ? (is_strong_buy_raw and barstate.isconfirmed) : is_strong_buy_raw
 is_buy_dip_base = use_confirmed_signals ? (is_buy_dip_raw and barstate.isconfirmed) : is_buy_dip_raw
 is_euphoria_sell = use_confirmed_signals ? (is_euphoria_sell_raw and barstate.isconfirmed) : is_euphoria_sell_raw
-is_strong_sell = use_confirmed_signals ? (is_strong_sell_raw and barstate.isconfirmed) : is_strong_sell_raw
+is_strong_sell_base = use_confirmed_signals ? (is_strong_sell_raw and barstate.isconfirmed) : is_strong_sell_raw
 is_sell_hedge_base = use_confirmed_signals ? (is_sell_hedge_raw and barstate.isconfirmed) : is_sell_hedge_raw
 
 // ===== v7.3 新增：信号冷却追踪变量 =====
@@ -443,7 +446,8 @@ var int last_buy_dip_bar = 0
 // 3. 满足信号冷却间隔
 is_sell_hedge_momentum_ok = z_momentum_bearish or (use_mtf_confirm and is_weekly_sell_aligned) or not use_momentum_confirm
 is_sell_hedge_cooldown_ok = bar_index - last_sell_hedge_bar > signal_display_cooldown
-is_sell_hedge = is_sell_hedge_base and vix_regime != 1 and is_sell_hedge_momentum_ok and is_sell_hedge_cooldown_ok
+sell_core_ok = not sell_requires_core_confirmation or has_core_euphoria_confirmation
+is_sell_hedge = is_sell_hedge_base and vix_regime != 1 and is_sell_hedge_momentum_ok and is_sell_hedge_cooldown_ok and sell_core_ok
 
 // buy_dip 增强条件：
 // 1. VIX Regime 不是 HIGH VOL（高波动期等待更强信号）
@@ -466,25 +470,28 @@ is_signal_allowed = use_trend_filter ? is_bull_market : true
 final_crash_buy = is_crash_buy  // CRASH BUY 不受趋势过滤限制
 final_strong_buy = is_strong_buy  // STRONG BUY 不受趋势过滤限制
 final_buy_dip = is_buy_dip and is_signal_allowed and z < -thresh_mid and has_core_panic_confirmation  // BUY DIP 需核心恐慌确认
+final_euphoria_sell = is_euphoria_sell  // EUPHORIA 保持最强极端顶部，不加额外核心过滤
+final_strong_sell = is_strong_sell_base and sell_core_ok
+final_sell_hedge = is_sell_hedge
 
 final_buy_signal = final_crash_buy or final_strong_buy or final_buy_dip
-final_sell_signal = is_euphoria_sell or is_strong_sell or is_sell_hedge
+final_sell_signal = final_euphoria_sell or final_strong_sell or final_sell_hedge
 
 // ========== 5.1 Alert Timing Signals (v7.11) ==========
 // Preview alerts keep the earliest-possible behavior.
 preview_crash_buy = final_crash_buy
 preview_strong_buy = final_strong_buy
 preview_buy_dip = final_buy_dip
-preview_euphoria_sell = is_euphoria_sell
-preview_strong_sell = is_strong_sell
-preview_sell_hedge = is_sell_hedge
+preview_euphoria_sell = final_euphoria_sell
+preview_strong_sell = final_strong_sell
+preview_sell_hedge = final_sell_hedge
 
 // Confirmed alerts use explicit bar-close confirmation and isolated cooldown state.
 confirmed_crash_buy = is_crash_buy_raw and barstate.isconfirmed
 confirmed_strong_buy = is_strong_buy_raw and barstate.isconfirmed
 confirmed_buy_dip_base = is_buy_dip_raw and barstate.isconfirmed
-confirmed_euphoria_sell = is_euphoria_sell_raw and barstate.isconfirmed
-confirmed_strong_sell = is_strong_sell_raw and barstate.isconfirmed
+confirmed_euphoria_sell_base = is_euphoria_sell_raw and barstate.isconfirmed
+confirmed_strong_sell_base = is_strong_sell_raw and barstate.isconfirmed
 confirmed_sell_hedge_base = is_sell_hedge_raw and barstate.isconfirmed
 
 var int last_confirmed_sell_hedge_bar = 0
@@ -492,7 +499,10 @@ var int last_confirmed_buy_dip_bar = 0
 
 confirmed_sell_hedge_cooldown_ok = bar_index - last_confirmed_sell_hedge_bar > signal_display_cooldown
 confirmed_buy_dip_cooldown_ok = bar_index - last_confirmed_buy_dip_bar > signal_display_cooldown
-confirmed_sell_hedge = confirmed_sell_hedge_base and vix_regime != 1 and is_sell_hedge_momentum_ok and confirmed_sell_hedge_cooldown_ok
+confirmed_sell_core_ok = not sell_requires_core_confirmation or has_core_euphoria_confirmation
+confirmed_euphoria_sell = confirmed_euphoria_sell_base
+confirmed_strong_sell = confirmed_strong_sell_base and confirmed_sell_core_ok
+confirmed_sell_hedge = confirmed_sell_hedge_base and vix_regime != 1 and is_sell_hedge_momentum_ok and confirmed_sell_hedge_cooldown_ok and confirmed_sell_core_ok
 confirmed_buy_dip = confirmed_buy_dip_base and vix_regime != 3 and is_buy_dip_momentum_ok and confirmed_buy_dip_cooldown_ok and is_signal_allowed and z < -thresh_mid and has_core_panic_confirmation
 
 if confirmed_sell_hedge
@@ -518,10 +528,13 @@ stats_lookback_bars = stats_lookback_years * 252
 stats_max_hold_bars = math.max(crash_return_bars, math.max(strong_return_bars, dip_return_bars))
 stats_ready = is_stats_daily_chart and bar_index >= stats_lookback_bars + stats_max_hold_bars
 
-// 统计只使用 1D 图表上的 confirmed 买入信号，避免 intraday 展开的 HTF 数据扭曲胜率。
+// 统计只使用 1D 图表上的 confirmed 最终信号，避免 intraday 展开的 HTF 数据扭曲胜率。
 stats_crash_buy = final_crash_buy and barstate.isconfirmed
 stats_strong_buy = final_strong_buy and barstate.isconfirmed
 stats_buy_dip = final_buy_dip and barstate.isconfirmed
+stats_euphoria_sell = final_euphoria_sell and barstate.isconfirmed
+stats_strong_sell = final_strong_sell and barstate.isconfirmed
+stats_sell_hedge = final_sell_hedge and barstate.isconfirmed
 
 // v7.10: 统计收益使用对应指数（Auto-Detect: QQQ→NDX, IWM→RUT, 其他→SPX）
 // 确保过滤逻辑和统计口径一致
@@ -538,33 +551,57 @@ dip_ref_return = not na(ref_close) and not na(ref_close[dip_return_bars]) ? (ref
 crash_eval_num = stats_crash_buy[crash_return_bars] ? 1 : 0
 strong_eval_num = stats_strong_buy[strong_return_bars] ? 1 : 0
 dip_eval_num = stats_buy_dip[dip_return_bars] ? 1 : 0
+euphoria_eval_num = stats_euphoria_sell[crash_return_bars] ? 1 : 0
+strong_sell_eval_num = stats_strong_sell[strong_return_bars] ? 1 : 0
+sell_hedge_eval_num = stats_sell_hedge[dip_return_bars] ? 1 : 0
 crash_win_num = stats_crash_buy[crash_return_bars] and crash_ref_return > 0 ? 1 : 0
 strong_win_num = stats_strong_buy[strong_return_bars] and strong_ref_return > 0 ? 1 : 0
 dip_win_num = stats_buy_dip[dip_return_bars] and dip_ref_return > 0 ? 1 : 0
+euphoria_win_num = stats_euphoria_sell[crash_return_bars] and crash_ref_return <= 0 ? 1 : 0
+strong_sell_win_num = stats_strong_sell[strong_return_bars] and strong_ref_return <= 0 ? 1 : 0
+sell_hedge_win_num = stats_sell_hedge[dip_return_bars] and dip_ref_return <= 0 ? 1 : 0
 crash_return_contrib = stats_crash_buy[crash_return_bars] ? crash_ref_return : 0.0
 strong_return_contrib = stats_strong_buy[strong_return_bars] ? strong_ref_return : 0.0
 dip_return_contrib = stats_buy_dip[dip_return_bars] ? dip_ref_return : 0.0
+euphoria_return_contrib = stats_euphoria_sell[crash_return_bars] ? crash_ref_return : 0.0
+strong_sell_return_contrib = stats_strong_sell[strong_return_bars] ? strong_ref_return : 0.0
+sell_hedge_return_contrib = stats_sell_hedge[dip_return_bars] ? dip_ref_return : 0.0
 
 // 滚动窗口内的收益总和
 crash_buy_return_sum = math.sum(crash_return_contrib, stats_lookback_bars)
 strong_buy_return_sum = math.sum(strong_return_contrib, stats_lookback_bars)
 buy_dip_return_sum = math.sum(dip_return_contrib, stats_lookback_bars)
+euphoria_sell_return_sum = math.sum(euphoria_return_contrib, stats_lookback_bars)
+strong_sell_return_sum = math.sum(strong_sell_return_contrib, stats_lookback_bars)
+sell_hedge_return_sum = math.sum(sell_hedge_return_contrib, stats_lookback_bars)
 
 // 滚动窗口内只统计已经走完持有周期的样本。
 crash_buy_evaluated_count = math.round(math.sum(crash_eval_num, stats_lookback_bars))
 strong_buy_evaluated_count = math.round(math.sum(strong_eval_num, stats_lookback_bars))
 buy_dip_evaluated_count = math.round(math.sum(dip_eval_num, stats_lookback_bars))
+euphoria_sell_evaluated_count = math.round(math.sum(euphoria_eval_num, stats_lookback_bars))
+strong_sell_evaluated_count = math.round(math.sum(strong_sell_eval_num, stats_lookback_bars))
+sell_hedge_evaluated_count = math.round(math.sum(sell_hedge_eval_num, stats_lookback_bars))
 crash_buy_win_count = math.round(math.sum(crash_win_num, stats_lookback_bars))
 strong_buy_win_count = math.round(math.sum(strong_win_num, stats_lookback_bars))
 buy_dip_win_count = math.round(math.sum(dip_win_num, stats_lookback_bars))
+euphoria_sell_win_count = math.round(math.sum(euphoria_win_num, stats_lookback_bars))
+strong_sell_win_count = math.round(math.sum(strong_sell_win_num, stats_lookback_bars))
+sell_hedge_win_count = math.round(math.sum(sell_hedge_win_num, stats_lookback_bars))
 
 // 计算平均收益
 crash_buy_avg_return = crash_buy_evaluated_count > 0 ? crash_buy_return_sum / crash_buy_evaluated_count : 0.0
 strong_buy_avg_return = strong_buy_evaluated_count > 0 ? strong_buy_return_sum / strong_buy_evaluated_count : 0.0
 buy_dip_avg_return = buy_dip_evaluated_count > 0 ? buy_dip_return_sum / buy_dip_evaluated_count : 0.0
+euphoria_sell_avg_return = euphoria_sell_evaluated_count > 0 ? euphoria_sell_return_sum / euphoria_sell_evaluated_count : 0.0
+strong_sell_avg_return = strong_sell_evaluated_count > 0 ? strong_sell_return_sum / strong_sell_evaluated_count : 0.0
+sell_hedge_avg_return = sell_hedge_evaluated_count > 0 ? sell_hedge_return_sum / sell_hedge_evaluated_count : 0.0
 crash_buy_win_rate = crash_buy_evaluated_count > 0 ? crash_buy_win_count * 100.0 / crash_buy_evaluated_count : 0.0
 strong_buy_win_rate = strong_buy_evaluated_count > 0 ? strong_buy_win_count * 100.0 / strong_buy_evaluated_count : 0.0
 buy_dip_win_rate = buy_dip_evaluated_count > 0 ? buy_dip_win_count * 100.0 / buy_dip_evaluated_count : 0.0
+euphoria_sell_win_rate = euphoria_sell_evaluated_count > 0 ? euphoria_sell_win_count * 100.0 / euphoria_sell_evaluated_count : 0.0
+strong_sell_win_rate = strong_sell_evaluated_count > 0 ? strong_sell_win_count * 100.0 / strong_sell_evaluated_count : 0.0
+sell_hedge_win_rate = sell_hedge_evaluated_count > 0 ? sell_hedge_win_count * 100.0 / sell_hedge_evaluated_count : 0.0
 
 // 最终信号翻译
 signal_txt = ""
@@ -601,9 +638,14 @@ else if score <= -6
     signal_col := color.new(#FF0000, 0)
     signal_emoji := "🔥"
 else if score <= -5
-    signal_txt := "🔴 STRONG SELL"
-    signal_col := color.red
-    signal_emoji := "🔴"
+    if sell_requires_core_confirmation and not has_core_euphoria_confirmation
+        signal_txt := "✋ HOLD (Core)"
+        signal_col := color.gray
+        signal_emoji := "✋"
+    else
+        signal_txt := "🔴 STRONG SELL"
+        signal_col := color.red
+        signal_emoji := "🔴"
 else if score <= -2
     if vix_regime == 1
         signal_txt := "☕ HOLD (Vol)"
@@ -611,6 +653,10 @@ else if score <= -2
         signal_emoji := "☕"
     else if use_momentum_confirm and not is_sell_hedge_momentum_ok
         signal_txt := "✋ HOLD (Mom)"
+        signal_col := color.gray
+        signal_emoji := "✋"
+    else if sell_requires_core_confirmation and not has_core_euphoria_confirmation
+        signal_txt := "✋ HOLD (Core)"
         signal_col := color.gray
         signal_emoji := "✋"
     else
@@ -653,9 +699,9 @@ plotshape(final_crash_buy ? -thresh_strong - 0.3 : na, title="Crash Buy Signal",
 plotshape(final_strong_buy ? -thresh_strong - 0.3 : na, title="Strong Buy Signal", location=location.absolute, style=shape.labelup, color=color.new(color.green, 20), text="🟢", textcolor=color.white, size=size.tiny)
 plotshape(final_buy_dip ? -thresh_strong - 0.3 : na, title="Buy Dip Signal", location=location.absolute, style=shape.labelup, color=color.new(color.lime, 20), text="🟡", textcolor=color.white, size=size.tiny)
 
-plotshape(is_euphoria_sell ? thresh_strong + 0.3 : na, title="Euphoria Sell Signal", location=location.absolute, style=shape.labeldown, color=color.new(#FF0000, 0), text="🔥", textcolor=color.white, size=size.small)
-plotshape(is_strong_sell ? thresh_strong + 0.3 : na, title="Strong Sell Signal", location=location.absolute, style=shape.labeldown, color=color.new(color.red, 20), text="🔴", textcolor=color.white, size=size.tiny)
-plotshape(is_sell_hedge ? thresh_strong + 0.3 : na, title="Sell/Hedge Signal", location=location.absolute, style=shape.labeldown, color=color.new(color.orange, 20), text="🟠", textcolor=color.white, size=size.tiny)
+plotshape(final_euphoria_sell ? thresh_strong + 0.3 : na, title="Euphoria Sell Signal", location=location.absolute, style=shape.labeldown, color=color.new(#FF0000, 0), text="🔥", textcolor=color.white, size=size.small)
+plotshape(final_strong_sell ? thresh_strong + 0.3 : na, title="Strong Sell Signal", location=location.absolute, style=shape.labeldown, color=color.new(color.red, 20), text="🔴", textcolor=color.white, size=size.tiny)
+plotshape(final_sell_hedge ? thresh_strong + 0.3 : na, title="Sell/Hedge Signal", location=location.absolute, style=shape.labeldown, color=color.new(color.orange, 20), text="🟠", textcolor=color.white, size=size.tiny)
 
 // ========== 9. 重新设计的仪表盘 (v7.8) ==========
 // 仪表盘位置转换函数
@@ -676,8 +722,8 @@ signal_bg = score >= 5 ? c_buy_bg : score <= -5 ? c_sell_bg : c_row
 // v7.8: 仅在预览模式（非实盘安全模式）时显示重绘警告
 is_preview_mode = not trading_safe_mode
 
-// Mobile: 2行, Full: 14行
-panel_rows = is_mobile ? 2 : 14
+// Mobile: 2行, Full: 16行
+panel_rows = is_mobile ? 2 : 16
 var table panel = table.new(get_table_pos(table_position), 2, panel_rows, border_width=0)
 
 if show_table and barstate.islast
@@ -769,24 +815,42 @@ if show_table and barstate.islast
                 table.cell(panel, 1, 12, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
                 table.cell(panel, 0, 13, "Use daily chart", bgcolor=c_row, text_color=c_label, text_halign=text.align_left, text_size=t_size)
                 table.cell(panel, 1, 13, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
+                table.cell(panel, 0, 14, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
+                table.cell(panel, 1, 14, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
+                table.cell(panel, 0, 15, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
+                table.cell(panel, 1, 15, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
             else
                 stats_left = f_stats_cell("🚨", crash_buy_evaluated_count, crash_buy_win_rate, crash_buy_avg_return, stats_ready)
                 stats_right = f_stats_cell("🟢", strong_buy_evaluated_count, strong_buy_win_rate, strong_buy_avg_return, stats_ready)
                 stats_dip = f_stats_cell("🟡", buy_dip_evaluated_count, buy_dip_win_rate, buy_dip_avg_return, stats_ready)
+                stats_sell_left = f_stats_cell("🔥", euphoria_sell_evaluated_count, euphoria_sell_win_rate, euphoria_sell_avg_return, stats_ready)
+                stats_sell_right = f_stats_cell("🔴", strong_sell_evaluated_count, strong_sell_win_rate, strong_sell_avg_return, stats_ready)
+                stats_hedge = f_stats_cell("🟠", sell_hedge_evaluated_count, sell_hedge_win_rate, sell_hedge_avg_return, stats_ready)
                 crash_col = stats_ready ? (crash_buy_avg_return >= 0 ? color.lime : color.red) : c_label
                 strong_col = stats_ready ? (strong_buy_avg_return >= 0 ? color.lime : color.red) : c_label
                 dip_col = stats_ready ? (buy_dip_avg_return >= 0 ? color.lime : color.red) : c_label
+                euphoria_col = stats_ready ? (euphoria_sell_avg_return <= 0 ? color.lime : color.red) : c_label
+                sell_strong_col = stats_ready ? (strong_sell_avg_return <= 0 ? color.lime : color.red) : c_label
+                hedge_col = stats_ready ? (sell_hedge_avg_return <= 0 ? color.lime : color.red) : c_label
                 table.cell(panel, 0, 12, stats_left, bgcolor=c_row, text_color=crash_col, text_halign=text.align_left, text_size=t_size)
                 table.cell(panel, 1, 12, stats_right, bgcolor=c_row, text_color=strong_col, text_halign=text.align_right, text_size=t_size)
             
                 // --- Row 13: BUY DIP 统计 ---
                 table.cell(panel, 0, 13, stats_dip, bgcolor=c_row, text_color=dip_col, text_halign=text.align_left, text_size=t_size)
                 table.cell(panel, 1, 13, stats_ready ? "N=Evaluated" : "Need full window", bgcolor=c_row, text_color=c_label, text_halign=text.align_right, text_size=size.tiny)
+                table.cell(panel, 0, 14, stats_sell_left, bgcolor=c_row, text_color=euphoria_col, text_halign=text.align_left, text_size=t_size)
+                table.cell(panel, 1, 14, stats_sell_right, bgcolor=c_row, text_color=sell_strong_col, text_halign=text.align_right, text_size=t_size)
+                table.cell(panel, 0, 15, stats_hedge, bgcolor=c_row, text_color=hedge_col, text_halign=text.align_left, text_size=t_size)
+                table.cell(panel, 1, 15, stats_ready ? "Win = Ref<=0" : "Need full window", bgcolor=c_row, text_color=c_label, text_halign=text.align_right, text_size=size.tiny)
         else
             table.cell(panel, 0, 12, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
             table.cell(panel, 1, 12, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
             table.cell(panel, 0, 13, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
             table.cell(panel, 1, 13, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
+            table.cell(panel, 0, 14, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
+            table.cell(panel, 1, 14, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
+            table.cell(panel, 0, 15, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
+            table.cell(panel, 1, 15, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
 
 // ========== 10. SMART ALERT (Unified Alert System v7.5) ==========
 // 基于 Adaptive RSI Pro 的智能警报优化：
