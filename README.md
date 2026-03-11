@@ -51,7 +51,7 @@ The score combines objective VIX structure factors:
 
 Trend is not part of the score. Trend only affects:
 
-- `BUY DIP` display filtering (`NO TRADE` in bear trend)
+- `🟡 BUY DIP` display filtering (`🚫 NO TRADE` in bear trend)
 - auto-detected reference index for statistics
 
 ### External Data Sources
@@ -80,13 +80,13 @@ Auto-detect routing:
 
 | Signal | Score Zone | Meaning |
 |:--|:--|:--|
-| `CRASH BUY` | `>= 6` | Extreme panic |
-| `STRONG BUY` | `>= 5` | High-conviction buy setup |
-| `BUY DIP` | `>= min_score_buy` and `< 5` | Weaker buy setup |
-| `NEUTRAL` | Between buy/sell zones | No directional edge |
-| `SELL/HEDGE` | `<= -2` and `> -5` | Hedge / trim risk |
-| `STRONG SELL` | `<= -5` and `> -6` | Strong sell setup |
-| `EUPHORIA` | `<= -6` | Extreme greed |
+| `🚨 CRASH BUY` | `>= 6` | Extreme panic |
+| `🟢 STRONG BUY` | `>= 5` | High-conviction buy setup |
+| `🟡 BUY DIP` | `>= min_score_buy` and `< 5` | Weaker buy setup |
+| `⏸ NEUTRAL` | Between buy/sell zones | No directional edge |
+| `🟠 SELL/HEDGE` | `<= -2` and `> -5` | Hedge / trim risk |
+| `🔴 STRONG SELL` | `<= -5` and `> -6` | Strong sell setup |
+| `🔥 EUPHORIA` | `<= -6` | Extreme greed |
 
 ### Filtered States
 
@@ -94,11 +94,11 @@ These are display states, not separate score formulas:
 
 | State | Why It Appears |
 |:--|:--|
-| `WAIT (Vol)` | Buy score is high enough, but volatility regime is too risky |
-| `WAIT (Mom)` | Buy score is high enough, but momentum confirmation failed |
-| `HOLD (Vol)` | Sell score is low enough, but volatility regime does not justify selling |
-| `HOLD (Mom)` | Sell score is low enough, but momentum confirmation failed |
-| `NO TRADE` | Buy-side setup is filtered by bear trend when trend filter is enabled |
+| `✋ WAIT (Vol)` | Buy score is high enough, but volatility regime is too risky |
+| `✋ WAIT (Mom)` | Buy score is high enough, but momentum confirmation failed |
+| `☕ HOLD (Vol)` | Sell score is low enough, but volatility regime does not justify selling |
+| `✋ HOLD (Mom)` | Sell score is low enough, but momentum confirmation failed |
+| `🚫 NO TRADE` | Buy-side setup is filtered by bear trend when trend filter is enabled |
 
 ### Confirmation Layers
 
@@ -166,8 +166,8 @@ Those feeds do not always finalize at the exact same time as the chart close. In
 ```text
 Symbol: [Side] [Timing] [Level][Upgrade] -> [Triggered Labels] | [Context]
 
-SPY: BUY [CONFIRMED] [Lv2] -> STRONG | Score:5.2 Z:-2.1 VIX:19(NORM) | Confirmed
-QQQ: BUY [PREVIEW] [Lv1] -> DIP | Score:4.0 Z:-1.8 VIX:28(HIGH) | Hybrid preview daily+chart
+SPY: 🟢 BUY [CONFIRMED] [Lv2] -> 🟢STRONG | Score:5.2 Z:-2.1 VIX:19(NORM) | Confirmed
+QQQ: 🟢 BUY [PREVIEW] [Lv1] -> 🟡DIP | Score:4.0 Z:-1.8 VIX:28(HIGH) | Hybrid preview daily+chart
 ```
 
 Alert state machine behavior:
@@ -208,7 +208,7 @@ The script can display:
 - term structure Z-Score
 - scaled SKEW line
 - smart volume columns
-- buy / sell labels on the chart
+- `🚨` / `🟢` / `🟡` / `🔥` / `🔴` / `🟠` labels on the chart
 - dark dashboard with grouped sections
 
 ## Key Configuration Groups
