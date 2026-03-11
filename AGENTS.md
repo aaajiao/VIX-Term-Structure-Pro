@@ -12,6 +12,16 @@
 | **Language** | Pine Script (TradingView DSL) |
 | **Version** | v7.10 |
 
+## Repository Layout
+
+| Path | Purpose |
+|------|---------|
+| `vix.pine` | Main indicator source |
+| `README.md` | English product overview + changelog |
+| `docs/README_CN.md` | 中文说明文档 |
+| `chart_guide.png` | Dashboard / chart usage reference |
+| `zscore_guide.png` | Z-Score interpretation reference |
+
 ## Build / Lint / Test Commands
 
 **No local toolchain.** Pine Script compiles only on TradingView.
@@ -26,6 +36,13 @@ git add vix.pine && git commit -m "feat(v7.x): English / 中文"
 1. **Syntax**: Paste into TradingView Pine Editor → check for errors
 2. **Visual**: Apply to chart → verify dashboard + signals render
 3. **Backtest**: Use TradingView's built-in strategy tester
+
+### Current v7.10 Reality Check
+
+- `vix.pine` is currently ~827 lines
+- Header is `indicator("VIX Term Structure Pro [v7.10]", ...)`
+- README and Chinese docs are already aligned to `v7.10`
+- No local compiler/test runner exists in this repo
 
 ## Code Style Guidelines
 
@@ -87,6 +104,17 @@ vix = request.security(sym_vix_input, vix_tf, close,
     lookahead=lookahead_setting, ignore_invalid_symbol=true)
 ```
 
+For VIX structure components, prefer fixed symbols unless chart-dependence is intentional. Current canonical symbols in this repo include:
+
+- `CBOE:VIX`
+- `CBOE:VX1!`
+- `CBOE:VX2!`
+- `CBOE:SKEW`
+- `CBOE:VVIX`
+- `SP:SPX`
+- `NASDAQ:NDX`
+- `TVC:RUT`
+
 ### ta.* Functions: No Conditional Calls (CW10003)
 
 `ta.*` functions must execute on **every bar** to maintain consistent history. Never put them inside ternary operators or `if` scopes.
@@ -115,6 +143,16 @@ ref = condition_a ?
 // ✅ SAFE — split into intermediate variable
 inner = condition_b ? val_b : val_c
 ref = condition_a ? inner : val_d
+```
+
+### Warmup / History Safety
+
+For percentile, Z-score, regime, or other history-sensitive calculations, compute the raw series every bar and gate usage with warmup checks.
+
+```pine
+enough_history = bar_index >= lookback_len
+pct_high_raw = ta.percentile_linear_interpolation(src, lookback_len, 90)
+pct_high = enough_history ? pct_high_raw : na
 ```
 
 ## Error Handling
@@ -173,6 +211,15 @@ vix_rt = request.security(sym, tf, close, lookahead=barmerge.lookahead_on, ignor
 vix_display = barstate.islast ? vix_rt : vix
 ```
 
+### Optional Feature Pattern
+
+Optional inputs may disable a feature's effect, but the surrounding data flow should remain explicit and safe.
+
+```pine
+vvix = use_vvix ? request.security("CBOE:VVIX", "D", close, lookahead=lookahead_setting, ignore_invalid_symbol=true) : na
+vvix_points = calc_vvix_points(vvix, use_vvix)
+```
+
 ## Documentation Standards
 
 - **Bilingual**: ALL user-facing text in EN + CN
@@ -206,6 +253,14 @@ z_weekly = request.security("SP:SPX", "W", z, ...)
 ```
 
 `syminfo.ticker` is fine for: auto-detect logic, alert message text, display labels.
+
+### Stats Reference Alignment
+
+If signal filtering uses auto-detected index context, return statistics should use the same reference family:
+
+- QQQ / NDX / NQ charts → `NASDAQ:NDX`
+- IWM / RUT / RTY charts → `TVC:RUT`
+- Everything else → `SP:SPX`
 
 ## Hard Constraints
 
