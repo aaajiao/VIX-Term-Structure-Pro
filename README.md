@@ -127,7 +127,7 @@ There are two separate ideas in the script:
 - `Confirmed Signals Only`: controls whether displayed chart signals wait for bar close
 - `Alert Timing Mode`: controls whether smart alerts are preview-style or confirmation-style
 
-They are intentionally no longer treated as the same thing in v7.12.
+They are intentionally treated as separate controls.
 
 ### Statistics Model
 
@@ -144,7 +144,7 @@ Rolling statistics are intentionally limited to exact `1D` charts.
 
 ## Smart Alerts
 
-### Default Behavior in v7.12
+### Default Behavior
 
 Default settings:
 
@@ -153,7 +153,7 @@ Default settings:
 - `After-Hours Alert Policy = Allow if source confirms`
 - `Alert Frequency = Real-time`
 
-This default is more explicit than older versions:
+This default means:
 
 - confirmed alerts may arrive after the close if daily external sources finalize late
 - preview alerts try to fire as early as possible
@@ -331,34 +331,12 @@ Validation must be done in TradingView:
 7. Switch `Sell Signal Strictness` between `Balanced (Legacy)` and `High Win-Rate` and confirm `✋ HOLD (Core)` appears when expected.
 8. Observe whether post-close confirmed alerts match delayed daily source updates.
 
-## Current Version Highlights
+## Current Highlights
 
-### v7.12
-
-- added sell-side strictness mode for higher-win-rate top signals
-- added core euphoria confirmation and `✋ HOLD (Core)` sell state
-- added sell-side rolling stats on exact `1D` charts
-- unified sell plots, alerts, and stats on final filtered sell signals
-
-### v7.11
-
-- explicit alert timing semantics
-- after-hours alert policy
-- confirmed vs preview alert labeling
-- structure-day dedup for confirmed alerts
-- dashboard alert-mode visibility
-
-### v7.10
-
-- score is fully cross-chart consistent
-- trend penalty removed from score
-- weekly MTF alignment fixed to `SP:SPX`
-- stats reference aligned to auto-detected index family
-
-### v7.9
-
-- stronger NA safety and warmup handling
-- safe-mode realtime VIX display on the dashboard
+- sell-side strictness mode supports cleaner high-win-rate top signals
+- core euphoria confirmation can gate sell signals with `✋ HOLD (Core)`
+- exact `1D` charts include rolling buy-side and sell-side statistics
+- sell plots, alerts, and stats all use the final filtered sell signals
 
 ## Limitations
 
