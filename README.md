@@ -177,7 +177,7 @@ If `VIX Timeframe = Chart` in preview mode:
 | Policy | Behavior |
 |:--|:--|
 | `Allow if source confirms` | Post-close alerts are allowed when confirmed daily data arrives late |
-| `Regular Session Only` | Alerts are blocked outside the regular session |
+| `Regular Session Only` | Alerts are blocked outside the exchange-defined regular session, even if the chart shows extended hours |
 
 ### Why Alerts Can Appear After the Close
 
@@ -193,6 +193,10 @@ The score depends on daily external sources such as:
 - optional `CBOE:VVIX`
 
 Those feeds do not always finalize at the exact same time as the chart close. In `Confirmed Daily Structure` mode, the script may correctly wait for those inputs to settle, which can produce a post-close `[CONFIRMED]` alert.
+
+If you switch to `Regular Session Only`, blocked after-hours signals are consumed instead of replayed on the next `1m` bar or the next allowed session bar.
+
+TradingView alerts run from a server-side snapshot of the script and its inputs. After changing alert timing or after-hours policy, delete and recreate the alert so the server picks up the new logic.
 
 ### Alert Message Format
 
@@ -311,7 +315,7 @@ Recommended only if you understand hybrid timing:
 - timeframe: `15m` or `1h`
 - `VIX Timeframe = Chart`
 - `Alert Timing Mode = Preview / Earliest Possible`
-- optionally `Regular Session Only` if you want no post-close alerts
+- add `Regular Session Only` if you want no post-close alerts, including extended-hours `1m` bars
 
 ## Validation Workflow
 
@@ -328,8 +332,10 @@ Validation must be done in TradingView:
    - `Confirmed Daily Structure`
    - `Preview / Earliest Possible`
    - `Regular Session Only`
+   - recreate the TradingView alert after each input change that affects timing/session behavior
 7. Switch `Sell Signal Strictness` between `Balanced (Legacy)` and `High Win-Rate` and confirm `✋ HOLD (Core)` appears when expected.
-8. Observe whether post-close confirmed alerts match delayed daily source updates.
+8. Observe whether post-close confirmed alerts match delayed daily source updates when `Allow if source confirms` is selected.
+9. Verify that `Regular Session Only` does not replay the same blocked signal on the next after-hours `1m` bar or on the next regular-session bar.
 
 ## Current Highlights
 
@@ -337,6 +343,7 @@ Validation must be done in TradingView:
 - core euphoria confirmation can gate sell signals with `✋ HOLD (Core)`
 - exact `1D` charts include rolling buy-side and sell-side statistics
 - sell plots, alerts, and stats all use the final filtered sell signals
+- `Regular Session Only` now keys off the exchange regular session and suppresses after-hours signal replays
 
 ## Limitations
 

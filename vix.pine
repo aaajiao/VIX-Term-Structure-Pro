@@ -149,7 +149,7 @@ strong_return_bars = input.int(20, "🟢 STRONG Return Period (Bars)", minval=10
 dip_return_bars = input.int(10, "🟡 DIP Return Period (Bars)", minval=5, maxval=20, group=grp_stats, tooltip="DIP信号收益周期 DIP return period\n约2周 ~2 weeks")
 enable_smart_alert = input.bool(true, "🔔 Smart Alert", group=grp_stats, tooltip="启用智能警报 Enable Smart Alert\n单条消息汇总所有信号 Aggregated signal message")
 alert_timing_mode = input.string("Confirmed Daily Structure", "└─ Alert Timing Mode", options=["Confirmed Daily Structure", "Preview / Earliest Possible"], group=grp_stats, tooltip="Confirmed Daily Structure: 基于确认后的日线结构源 Confirmed daily structure\n允许盘后因源数据确认而触发 Allows post-close alerts if sources confirm late\nPreview / Earliest Possible: 尽早预览 Hybrid preview\n可能仍受日线结构源更新时间影响 May still depend on delayed daily source updates")
-after_hours_alert_policy = input.string("Allow if source confirms", "└─ After-Hours Alert Policy", options=["Allow if source confirms", "Regular Session Only"], group=grp_stats, tooltip="Allow if source confirms: 确认模式下允许盘后源确认提醒 Allow post-close alerts when data confirms late\nRegular Session Only: 常规时段外不提醒 Block alerts outside the regular session")
+after_hours_alert_policy = input.string("Allow if source confirms", "└─ After-Hours Alert Policy", options=["Allow if source confirms", "Regular Session Only"], group=grp_stats, tooltip="Allow if source confirms: 确认模式下允许盘后源确认提醒 Allow post-close alerts when data confirms late\nRegular Session Only: 使用交易所常规时段，常规时段外不提醒 Use exchange-defined regular market hours; block alerts outside the regular session")
 alert_cooldown_base = input.int(5, "Alert Cooldown Base (Bars)", minval=1, maxval=20, group=grp_stats, tooltip="基础冷却间隔 Base cooldown\n高波动期减半 Halved in high vol")
 alert_freq_mode = input.string("Real-time", "└─ Alert Frequency", options=["Once Per Bar", "Real-time"], group=grp_stats, tooltip="Once Per Bar: 每K线最多一次 Max once per bar\nReal-time: 实时触发 Trigger on every condition")
 alert_freq = alert_freq_mode == "Real-time" ? alert.freq_all : alert.freq_once_per_bar
@@ -516,9 +516,9 @@ is_hybrid_alert_mode = is_alert_preview_mode and vix_timeframe == "Chart"
 alert_mode_tag = is_alert_preview_mode ? "[PREVIEW]" : "[CONFIRMED]"
 alert_mode_panel = is_alert_preview_mode ? (is_hybrid_alert_mode ? "PREVIEW*" : "PREVIEW") : "CONFIRMED"
 alert_mode_desc = is_alert_preview_mode ? (is_hybrid_alert_mode ? "Hybrid preview" : "Preview") : "Confirmed"
-regular_session_bar = timeframe.isintraday ? not na(time(timeframe.period, syminfo.session)) : (not barstate.isrealtime or timenow <= time_close)
+regular_session_bar = not timeframe.isintraday or session.ismarket
 allow_alert_now = not is_regular_session_only or regular_session_bar
-after_hours_confirmed_note = not is_alert_preview_mode and not regular_session_bar ? " source update after close" : ""
+after_hours_confirmed_note = not is_alert_preview_mode and timeframe.isintraday and not regular_session_bar ? " source update after close" : ""
 
 // ========== 6. 信号统计 (v7.0 新增, v7.7 改为滚动窗口) ==========
 // v7.7: 使用 math.sum() 滚动窗口统计，替代累积计数
@@ -867,7 +867,8 @@ f_buy_signal_level(_crash, _strong, _dip) =>
 f_sell_signal_level(_euphoria, _strong, _hedge) =>
     _euphoria ? 3 : _strong ? 2 : _hedge ? 1 : 0
 
-// varip: 追踪当前K线内已发送的最高信号等级 (K线收盘时自动重置)
+// varip: 追踪当前K线内已观察到的最高信号等级。
+// 即使提醒被盘后策略或冷却拦截，也要记账避免在同一方向上重放。
 varip int buy_alert_level_sent = 0
 varip int sell_alert_level_sent = 0
 
@@ -880,10 +881,11 @@ var int prev_bar_buy_level = 0
 var int prev_bar_sell_level = 0
 var int last_confirmed_buy_day_id = 0
 var int last_confirmed_sell_day_id = 0
+// v7.12: confirmed 模式按结构日追踪已观察等级，避免盘后/冷却拦截后在后续 1m bar 重放。
 var int confirmed_buy_day_level_sent = 0
 var int confirmed_sell_day_level_sent = 0
 
-// 新K线开始时重置等级追踪，并保存上一K线等级
+// 新K线开始时重置当前K线已观察等级，并保存上一K线等级
 if barstate.isnew
     prev_bar_buy_level := buy_alert_level_sent
     prev_bar_sell_level := sell_alert_level_sent
@@ -911,8 +913,9 @@ if enable_smart_alert
     is_cross_bar_upgrade_buy = is_alert_preview_mode ? (has_buy_signal and current_buy_level > prev_bar_buy_level and current_buy_level > buy_alert_level_sent) : false
     is_confirmed_day_upgrade_buy = not is_alert_preview_mode and has_buy_signal and current_buy_level > confirmed_buy_day_level_sent
     is_new_buy = is_alert_preview_mode ? (is_rising_edge_buy or is_cross_bar_upgrade_buy) : is_confirmed_day_upgrade_buy
+    should_emit_buy = allow_alert_now and is_new_buy and (bar_index - last_buy_alert_bar > adaptive_cooldown)
     
-    if allow_alert_now and is_new_buy and (bar_index - last_buy_alert_bar > adaptive_cooldown)
+    if should_emit_buy
         // 构建消息头 (含等级标签 + 升级标记)
         upgrade_marker = current_buy_level > prev_buy_level_ref and prev_buy_level_ref > 0 ? "⬆️" : ""
         level_txt = current_buy_level == 3 ? "[Lv3🔥]" : current_buy_level == 2 ? "[Lv2]" : "[Lv1]"
@@ -936,12 +939,14 @@ if enable_smart_alert
             msg := msg + after_hours_confirmed_note
         
         alert(msg, alert_freq)
-        if is_alert_preview_mode
-            buy_alert_level_sent := current_buy_level
-        else
-            confirmed_buy_day_level_sent := current_buy_level
-            last_confirmed_buy_day_id := spx_day_id
         last_buy_alert_bar := bar_index
+
+    if is_new_buy
+        if is_alert_preview_mode
+            buy_alert_level_sent := current_buy_level > buy_alert_level_sent ? current_buy_level : buy_alert_level_sent
+        else
+            confirmed_buy_day_level_sent := current_buy_level > confirmed_buy_day_level_sent ? current_buy_level : confirmed_buy_day_level_sent
+            last_confirmed_buy_day_id := spx_day_id
     
     // ===== 卖出信号聚合 =====
     alert_sell_euphoria = is_alert_preview_mode ? preview_euphoria_sell : confirmed_euphoria_sell
@@ -952,13 +957,14 @@ if enable_smart_alert
     current_sell_level = f_sell_signal_level(alert_sell_euphoria, alert_sell_strong, alert_sell_hedge)
     prev_sell_level_ref = is_alert_preview_mode ? prev_bar_sell_level : confirmed_sell_day_level_sent
     
-    // v7.11: 确认模式按结构日去重，预览模式保留跨K线升级
+    // v7.12: 确认模式按结构日去重，预览模式保留跨K线升级；被拦截的等级也会记账避免重放
     is_rising_edge_sell = is_alert_preview_mode ? (has_sell_signal and not has_sell_signal_prev and current_sell_level > sell_alert_level_sent) : false
     is_cross_bar_upgrade_sell = is_alert_preview_mode ? (has_sell_signal and current_sell_level > prev_bar_sell_level and current_sell_level > sell_alert_level_sent) : false
     is_confirmed_day_upgrade_sell = not is_alert_preview_mode and has_sell_signal and current_sell_level > confirmed_sell_day_level_sent
     is_new_sell = is_alert_preview_mode ? (is_rising_edge_sell or is_cross_bar_upgrade_sell) : is_confirmed_day_upgrade_sell
+    should_emit_sell = allow_alert_now and is_new_sell and (bar_index - last_sell_alert_bar > adaptive_cooldown)
     
-    if allow_alert_now and is_new_sell and (bar_index - last_sell_alert_bar > adaptive_cooldown)
+    if should_emit_sell
         // 构建消息头 (含等级标签 + 升级标记)
         upgrade_marker = current_sell_level > prev_sell_level_ref and prev_sell_level_ref > 0 ? "⬆️" : ""
         level_txt = current_sell_level == 3 ? "[Lv3🔥]" : current_sell_level == 2 ? "[Lv2]" : "[Lv1]"
@@ -981,9 +987,11 @@ if enable_smart_alert
             msg := msg + after_hours_confirmed_note
         
         alert(msg, alert_freq)
-        if is_alert_preview_mode
-            sell_alert_level_sent := current_sell_level
-        else
-            confirmed_sell_day_level_sent := current_sell_level
-            last_confirmed_sell_day_id := spx_day_id
         last_sell_alert_bar := bar_index
+
+    if is_new_sell
+        if is_alert_preview_mode
+            sell_alert_level_sent := current_sell_level > sell_alert_level_sent ? current_sell_level : sell_alert_level_sent
+        else
+            confirmed_sell_day_level_sent := current_sell_level > confirmed_sell_day_level_sent ? current_sell_level : confirmed_sell_day_level_sent
+            last_confirmed_sell_day_id := spx_day_id
