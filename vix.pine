@@ -148,8 +148,8 @@ crash_return_bars = input.int(40, "🚨 CRASH Return Period (Bars)", minval=10, 
 strong_return_bars = input.int(20, "🟢 STRONG Return Period (Bars)", minval=10, maxval=40, group=grp_stats, tooltip="STRONG信号收益周期 STRONG return period\n约1个月 ~1 month")
 dip_return_bars = input.int(10, "🟡 DIP Return Period (Bars)", minval=5, maxval=20, group=grp_stats, tooltip="DIP信号收益周期 DIP return period\n约2周 ~2 weeks")
 enable_smart_alert = input.bool(true, "🔔 Smart Alert", group=grp_stats, tooltip="启用智能警报 Enable Smart Alert\n单条消息汇总所有信号 Aggregated signal message")
-alert_timing_mode = input.string("Confirmed Daily Structure", "└─ Alert Timing Mode", options=["Confirmed Daily Structure", "Preview / Earliest Possible"], group=grp_stats, tooltip="Confirmed Daily Structure: 基于确认后的日线结构源 Confirmed daily structure\n允许盘后因源数据确认而触发 Allows post-close alerts if sources confirm late\nPreview / Earliest Possible: 尽早预览 Hybrid preview\n可能仍受日线结构源更新时间影响 May still depend on delayed daily source updates")
-after_hours_alert_policy = input.string("Allow if source confirms", "└─ After-Hours Alert Policy", options=["Allow if source confirms", "Regular Session Only"], group=grp_stats, tooltip="Allow if source confirms: 确认模式下允许盘后源确认提醒 Allow post-close alerts when data confirms late\nRegular Session Only: 使用交易所常规时段，常规时段外不提醒 Use exchange-defined regular market hours; block alerts outside the regular session")
+alert_timing_mode = input.string("Confirmed Daily Structure", "└─ Alert Timing Mode", options=["Confirmed Daily Structure", "Preview / Earliest Possible"], group=grp_stats, tooltip="Confirmed Daily Structure: 严格使用已完成的上一结构日 Strict previous completed structure day\n盘中只在下一次常规时段发出一次 confirmed Confirmed emits once on the next regular session\nPreview / Earliest Possible: 尽早预览 Hybrid preview\n可能仍受日线结构源更新时间影响 May still depend on delayed daily source updates")
+after_hours_alert_policy = input.string("Allow if source confirms", "└─ After-Hours Alert Policy", options=["Allow if source confirms", "Regular Session Only"], group=grp_stats, tooltip="Preview 模式使用 Used by Preview mode\nAllow if source confirms: 允许盘后预览提醒 Allow preview alerts after close\nRegular Session Only: 使用交易所常规时段，常规时段外不提醒 Use exchange-defined regular market hours; block alerts outside the regular session")
 alert_cooldown_base = input.int(5, "Alert Cooldown Base (Bars)", minval=1, maxval=20, group=grp_stats, tooltip="基础冷却间隔 Base cooldown\n高波动期减半 Halved in high vol")
 alert_freq_mode = input.string("Real-time", "└─ Alert Frequency", options=["Once Per Bar", "Real-time"], group=grp_stats, tooltip="Once Per Bar: 每K线最多一次 Max once per bar\nReal-time: 实时触发 Trigger on every condition")
 alert_freq = alert_freq_mode == "Real-time" ? alert.freq_all : alert.freq_once_per_bar
@@ -216,6 +216,7 @@ vix     = request.security(sym_vix_input, vix_tf, close, lookahead=lookahead_set
 vix_rt = request.security(sym_vix_input, vix_tf, close, lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
 vix_display = barstate.islast ? vix_rt : vix
 spx_day_id = request.security("SP:SPX", "D", year * 10000 + month * 100 + dayofmonth, lookahead=lookahead_setting, ignore_invalid_symbol=true)
+confirmed_structure_day_id = request.security("SP:SPX", "D", year * 10000 + month * 100 + dayofmonth, lookahead=barmerge.lookahead_off, ignore_invalid_symbol=true)
 
 vx1     = request.security("CBOE:VX1!", "D", close, lookahead=lookahead_setting, ignore_invalid_symbol=true)
 vx2     = request.security("CBOE:VX2!", "D", close, lookahead=lookahead_setting, ignore_invalid_symbol=true)
@@ -477,6 +478,14 @@ final_sell_hedge = is_sell_hedge
 final_buy_signal = final_crash_buy or final_strong_buy or final_buy_dip
 final_sell_signal = final_euphoria_sell or final_strong_sell or final_sell_hedge
 
+// 信号等级函数 (优先级越高值越大)
+// Buy: 0=无, 1=BUY_DIP, 2=STRONG_BUY, 3=CRASH_BUY
+// Sell: 0=无, 1=SELL_HEDGE, 2=STRONG_SELL, 3=EUPHORIA_SELL
+f_buy_signal_level(_crash, _strong, _dip) =>
+    _crash ? 3 : _strong ? 2 : _dip ? 1 : 0
+f_sell_signal_level(_euphoria, _strong, _hedge) =>
+    _euphoria ? 3 : _strong ? 2 : _hedge ? 1 : 0
+
 // ========== 5.1 Alert Timing Signals (v7.11) ==========
 // Preview alerts keep the earliest-possible behavior.
 preview_crash_buy = final_crash_buy
@@ -486,29 +495,43 @@ preview_euphoria_sell = final_euphoria_sell
 preview_strong_sell = final_strong_sell
 preview_sell_hedge = final_sell_hedge
 
-// Confirmed alerts use explicit bar-close confirmation and isolated cooldown state.
-confirmed_crash_buy = is_crash_buy_raw and barstate.isconfirmed
-confirmed_strong_buy = is_strong_buy_raw and barstate.isconfirmed
-confirmed_buy_dip_base = is_buy_dip_raw and barstate.isconfirmed
-confirmed_euphoria_sell_base = is_euphoria_sell_raw and barstate.isconfirmed
-confirmed_strong_sell_base = is_strong_sell_raw and barstate.isconfirmed
-confirmed_sell_hedge_base = is_sell_hedge_raw and barstate.isconfirmed
+// Confirmed alerts snapshot one completed structure day and emit once on the next regular-session opportunity.
+new_confirmed_structure_day = not na(confirmed_structure_day_id) and (na(confirmed_structure_day_id[1]) or confirmed_structure_day_id != confirmed_structure_day_id[1])
+has_new_chart_day = year != year[1] or month != month[1] or dayofmonth != dayofmonth[1]
 
-var int last_confirmed_sell_hedge_bar = 0
-var int last_confirmed_buy_dip_bar = 0
+var float last_confirmed_structure_score = na
+var int pending_confirmed_buy_level = 0
+var int pending_confirmed_sell_level = 0
+var int pending_confirmed_structure_day = 0
+var float pending_confirmed_score = na
+var float pending_confirmed_z = na
+var float pending_confirmed_vix = na
+var float pending_confirmed_skew = na
+var string pending_confirmed_vix_regime_txt = ""
+var string pending_confirmed_trend_status_txt = ""
+var int emitted_confirmed_buy_day = 0
+var int emitted_confirmed_sell_day = 0
 
-confirmed_sell_hedge_cooldown_ok = bar_index - last_confirmed_sell_hedge_bar > signal_display_cooldown
-confirmed_buy_dip_cooldown_ok = bar_index - last_confirmed_buy_dip_bar > signal_display_cooldown
-confirmed_sell_core_ok = not sell_requires_core_confirmation or has_core_euphoria_confirmation
-confirmed_euphoria_sell = confirmed_euphoria_sell_base
-confirmed_strong_sell = confirmed_strong_sell_base and confirmed_sell_core_ok
-confirmed_sell_hedge = confirmed_sell_hedge_base and vix_regime != 1 and is_sell_hedge_momentum_ok and confirmed_sell_hedge_cooldown_ok and confirmed_sell_core_ok
-confirmed_buy_dip = confirmed_buy_dip_base and vix_regime != 3 and is_buy_dip_momentum_ok and confirmed_buy_dip_cooldown_ok and is_signal_allowed and z < -thresh_mid and has_core_panic_confirmation
-
-if confirmed_sell_hedge
-    last_confirmed_sell_hedge_bar := bar_index
-if confirmed_buy_dip
-    last_confirmed_buy_dip_bar := bar_index
+if new_confirmed_structure_day
+    confirmed_prev_score = last_confirmed_structure_score
+    confirmed_has_prev = not na(confirmed_prev_score)
+    confirmed_sell_core_ok = not sell_requires_core_confirmation or has_core_euphoria_confirmation
+    confirmed_crash_buy = confirmed_has_prev and score >= 6 and confirmed_prev_score < 6
+    confirmed_strong_buy = confirmed_has_prev and score >= 5 and score < 6 and confirmed_prev_score < 5
+    confirmed_buy_dip = confirmed_has_prev and score >= min_score_buy and score < 5 and confirmed_prev_score < min_score_buy and vix_regime != 3 and is_buy_dip_momentum_ok and is_signal_allowed and z < -thresh_mid and has_core_panic_confirmation
+    confirmed_euphoria_sell = confirmed_has_prev and score <= -6 and confirmed_prev_score > -6
+    confirmed_strong_sell = confirmed_has_prev and score <= -5 and score > -6 and confirmed_prev_score > -5 and confirmed_sell_core_ok
+    confirmed_sell_hedge = confirmed_has_prev and score <= -2 and score > -5 and confirmed_prev_score > -2 and vix_regime != 1 and is_sell_hedge_momentum_ok and confirmed_sell_core_ok
+    pending_confirmed_buy_level := f_buy_signal_level(confirmed_crash_buy, confirmed_strong_buy, confirmed_buy_dip)
+    pending_confirmed_sell_level := f_sell_signal_level(confirmed_euphoria_sell, confirmed_strong_sell, confirmed_sell_hedge)
+    pending_confirmed_structure_day := confirmed_structure_day_id
+    pending_confirmed_score := score
+    pending_confirmed_z := z
+    pending_confirmed_vix := vix
+    pending_confirmed_skew := skew
+    pending_confirmed_vix_regime_txt := vix_regime_txt
+    pending_confirmed_trend_status_txt := trend_status_txt
+    last_confirmed_structure_score := score
 
 is_alert_preview_mode = alert_timing_mode == "Preview / Earliest Possible"
 is_regular_session_only = after_hours_alert_policy == "Regular Session Only"
@@ -518,7 +541,7 @@ alert_mode_panel = is_alert_preview_mode ? (is_hybrid_alert_mode ? "PREVIEW*" : 
 alert_mode_desc = is_alert_preview_mode ? (is_hybrid_alert_mode ? "Hybrid preview" : "Preview") : "Confirmed"
 regular_session_bar = not timeframe.isintraday or session.ismarket
 allow_alert_now = not is_regular_session_only or regular_session_bar
-after_hours_confirmed_note = not is_alert_preview_mode and timeframe.isintraday and not regular_session_bar ? " source update after close" : ""
+confirmed_emit_now = timeframe.isintraday ? (regular_session_bar and (not new_confirmed_structure_day or has_new_chart_day)) : barstate.isconfirmed
 
 // ========== 6. 信号统计 (v7.0 新增, v7.7 改为滚动窗口) ==========
 // v7.7: 使用 math.sum() 滚动窗口统计，替代累积计数
@@ -859,31 +882,18 @@ if show_table and barstate.islast
 // 3. 等级升级触发 - 出现更强信号时立即触发新警报
 // 4. VIX Regime 自适应冷却 - 跨K线的额外过滤层
 
-// 信号等级函数 (优先级越高值越大)
-// Buy: 0=无, 1=BUY_DIP, 2=STRONG_BUY, 3=CRASH_BUY
-// Sell: 0=无, 1=SELL_HEDGE, 2=STRONG_SELL, 3=EUPHORIA_SELL
-f_buy_signal_level(_crash, _strong, _dip) =>
-    _crash ? 3 : _strong ? 2 : _dip ? 1 : 0
-f_sell_signal_level(_euphoria, _strong, _hedge) =>
-    _euphoria ? 3 : _strong ? 2 : _hedge ? 1 : 0
-
 // varip: 追踪当前K线内已观察到的最高信号等级。
 // 即使提醒被盘后策略或冷却拦截，也要记账避免在同一方向上重放。
 varip int buy_alert_level_sent = 0
 varip int sell_alert_level_sent = 0
 
-// var: 跨K线冷却追踪 (保留 VIX Regime 自适应冷却)
+// var: 预览模式跨K线冷却追踪 (保留 VIX Regime 自适应冷却)
 var int last_buy_alert_bar = 0
 var int last_sell_alert_bar = 0
 
 // v7.7: 追踪上一根K线的信号等级，用于检测跨K线升级
 var int prev_bar_buy_level = 0
 var int prev_bar_sell_level = 0
-var int last_confirmed_buy_day_id = 0
-var int last_confirmed_sell_day_id = 0
-// v7.12: confirmed 模式按结构日追踪已观察等级，避免盘后/冷却拦截后在后续 1m bar 重放。
-var int confirmed_buy_day_level_sent = 0
-var int confirmed_sell_day_level_sent = 0
 
 // 新K线开始时重置当前K线已观察等级，并保存上一K线等级
 if barstate.isnew
@@ -892,28 +902,22 @@ if barstate.isnew
     buy_alert_level_sent := 0
     sell_alert_level_sent := 0
 
-if spx_day_id != last_confirmed_buy_day_id
-    confirmed_buy_day_level_sent := 0
-if spx_day_id != last_confirmed_sell_day_id
-    confirmed_sell_day_level_sent := 0
-
 // VIX Regime 自适应冷却：高波动减半，低波动加倍
 adaptive_cooldown = vix_regime == 3 ? math.round(alert_cooldown_base / 2) : vix_regime == 1 ? alert_cooldown_base * 2 : alert_cooldown_base
 
 if enable_smart_alert
     // ===== 买入信号聚合 =====
-    alert_buy_crash = is_alert_preview_mode ? preview_crash_buy : confirmed_crash_buy
-    alert_buy_strong = is_alert_preview_mode ? preview_strong_buy : confirmed_strong_buy
-    alert_buy_dip = is_alert_preview_mode ? preview_buy_dip : confirmed_buy_dip
+    alert_buy_crash = is_alert_preview_mode ? preview_crash_buy : pending_confirmed_buy_level == 3
+    alert_buy_strong = is_alert_preview_mode ? preview_strong_buy : pending_confirmed_buy_level == 2
+    alert_buy_dip = is_alert_preview_mode ? preview_buy_dip : pending_confirmed_buy_level == 1
     has_buy_signal = alert_buy_crash or alert_buy_strong or alert_buy_dip
     has_buy_signal_prev = is_alert_preview_mode ? ((alert_buy_crash[1] == true) or (alert_buy_strong[1] == true) or (alert_buy_dip[1] == true)) : false
     current_buy_level = f_buy_signal_level(alert_buy_crash, alert_buy_strong, alert_buy_dip)
-    prev_buy_level_ref = is_alert_preview_mode ? prev_bar_buy_level : confirmed_buy_day_level_sent
+    prev_buy_level_ref = is_alert_preview_mode ? prev_bar_buy_level : 0
     is_rising_edge_buy = is_alert_preview_mode ? (has_buy_signal and not has_buy_signal_prev and current_buy_level > buy_alert_level_sent) : false
     is_cross_bar_upgrade_buy = is_alert_preview_mode ? (has_buy_signal and current_buy_level > prev_bar_buy_level and current_buy_level > buy_alert_level_sent) : false
-    is_confirmed_day_upgrade_buy = not is_alert_preview_mode and has_buy_signal and current_buy_level > confirmed_buy_day_level_sent
-    is_new_buy = is_alert_preview_mode ? (is_rising_edge_buy or is_cross_bar_upgrade_buy) : is_confirmed_day_upgrade_buy
-    should_emit_buy = allow_alert_now and is_new_buy and (bar_index - last_buy_alert_bar > adaptive_cooldown)
+    is_new_buy = is_rising_edge_buy or is_cross_bar_upgrade_buy
+    should_emit_buy = is_alert_preview_mode ? (allow_alert_now and is_new_buy and (bar_index - last_buy_alert_bar > adaptive_cooldown)) : (confirmed_emit_now and current_buy_level > 0 and pending_confirmed_structure_day != emitted_confirmed_buy_day)
     
     if should_emit_buy
         // 构建消息头 (含等级标签 + 升级标记)
@@ -931,38 +935,37 @@ if enable_smart_alert
         
         // 添加上下文：Score, Z, VIX Regime, 指数趋势
         msg := msg + str.format("| Score:{0} Z:{1,number,#.##} VIX:{2,number,#.#}({3}) {4}", 
-            score, z, vix, vix_regime_txt, trend_status_txt)
+            is_alert_preview_mode ? score : pending_confirmed_score,
+            is_alert_preview_mode ? z : pending_confirmed_z,
+            is_alert_preview_mode ? vix : pending_confirmed_vix,
+            is_alert_preview_mode ? vix_regime_txt : pending_confirmed_vix_regime_txt,
+            is_alert_preview_mode ? trend_status_txt : pending_confirmed_trend_status_txt)
         msg := msg + " | " + alert_mode_desc
         if is_hybrid_alert_mode
             msg := msg + " hybrid daily+chart"
-        if after_hours_confirmed_note != ""
-            msg := msg + after_hours_confirmed_note
         
         alert(msg, alert_freq)
-        last_buy_alert_bar := bar_index
+        if is_alert_preview_mode
+            last_buy_alert_bar := bar_index
+        else
+            emitted_confirmed_buy_day := pending_confirmed_structure_day
 
     if is_new_buy
-        if is_alert_preview_mode
-            buy_alert_level_sent := current_buy_level > buy_alert_level_sent ? current_buy_level : buy_alert_level_sent
-        else
-            confirmed_buy_day_level_sent := current_buy_level > confirmed_buy_day_level_sent ? current_buy_level : confirmed_buy_day_level_sent
-            last_confirmed_buy_day_id := spx_day_id
+        buy_alert_level_sent := current_buy_level > buy_alert_level_sent ? current_buy_level : buy_alert_level_sent
     
     // ===== 卖出信号聚合 =====
-    alert_sell_euphoria = is_alert_preview_mode ? preview_euphoria_sell : confirmed_euphoria_sell
-    alert_sell_strong = is_alert_preview_mode ? preview_strong_sell : confirmed_strong_sell
-    alert_sell_hedge = is_alert_preview_mode ? preview_sell_hedge : confirmed_sell_hedge
+    alert_sell_euphoria = is_alert_preview_mode ? preview_euphoria_sell : pending_confirmed_sell_level == 3
+    alert_sell_strong = is_alert_preview_mode ? preview_strong_sell : pending_confirmed_sell_level == 2
+    alert_sell_hedge = is_alert_preview_mode ? preview_sell_hedge : pending_confirmed_sell_level == 1
     has_sell_signal = alert_sell_euphoria or alert_sell_strong or alert_sell_hedge
     has_sell_signal_prev = is_alert_preview_mode ? ((alert_sell_euphoria[1] == true) or (alert_sell_strong[1] == true) or (alert_sell_hedge[1] == true)) : false
     current_sell_level = f_sell_signal_level(alert_sell_euphoria, alert_sell_strong, alert_sell_hedge)
-    prev_sell_level_ref = is_alert_preview_mode ? prev_bar_sell_level : confirmed_sell_day_level_sent
+    prev_sell_level_ref = is_alert_preview_mode ? prev_bar_sell_level : 0
     
-    // v7.12: 确认模式按结构日去重，预览模式保留跨K线升级；被拦截的等级也会记账避免重放
     is_rising_edge_sell = is_alert_preview_mode ? (has_sell_signal and not has_sell_signal_prev and current_sell_level > sell_alert_level_sent) : false
     is_cross_bar_upgrade_sell = is_alert_preview_mode ? (has_sell_signal and current_sell_level > prev_bar_sell_level and current_sell_level > sell_alert_level_sent) : false
-    is_confirmed_day_upgrade_sell = not is_alert_preview_mode and has_sell_signal and current_sell_level > confirmed_sell_day_level_sent
-    is_new_sell = is_alert_preview_mode ? (is_rising_edge_sell or is_cross_bar_upgrade_sell) : is_confirmed_day_upgrade_sell
-    should_emit_sell = allow_alert_now and is_new_sell and (bar_index - last_sell_alert_bar > adaptive_cooldown)
+    is_new_sell = is_rising_edge_sell or is_cross_bar_upgrade_sell
+    should_emit_sell = is_alert_preview_mode ? (allow_alert_now and is_new_sell and (bar_index - last_sell_alert_bar > adaptive_cooldown)) : (confirmed_emit_now and current_sell_level > 0 and pending_confirmed_structure_day != emitted_confirmed_sell_day)
     
     if should_emit_sell
         // 构建消息头 (含等级标签 + 升级标记)
@@ -979,19 +982,19 @@ if enable_smart_alert
         
         // 添加上下文：Score, Z, SKEW, 指数趋势
         msg := msg + str.format("| Score:{0} Z:{1,number,#.##} SKEW:{2,number,#} {3}", 
-            score, z, skew, trend_status_txt)
+            is_alert_preview_mode ? score : pending_confirmed_score,
+            is_alert_preview_mode ? z : pending_confirmed_z,
+            is_alert_preview_mode ? skew : pending_confirmed_skew,
+            is_alert_preview_mode ? trend_status_txt : pending_confirmed_trend_status_txt)
         msg := msg + " | " + alert_mode_desc
         if is_hybrid_alert_mode
             msg := msg + " hybrid daily+chart"
-        if after_hours_confirmed_note != ""
-            msg := msg + after_hours_confirmed_note
         
         alert(msg, alert_freq)
-        last_sell_alert_bar := bar_index
+        if is_alert_preview_mode
+            last_sell_alert_bar := bar_index
+        else
+            emitted_confirmed_sell_day := pending_confirmed_structure_day
 
     if is_new_sell
-        if is_alert_preview_mode
-            sell_alert_level_sent := current_sell_level > sell_alert_level_sent ? current_sell_level : sell_alert_level_sent
-        else
-            confirmed_sell_day_level_sent := current_sell_level > confirmed_sell_day_level_sent ? current_sell_level : confirmed_sell_day_level_sent
-            last_confirmed_sell_day_id := spx_day_id
+        sell_alert_level_sent := current_sell_level > sell_alert_level_sent ? current_sell_level : sell_alert_level_sent

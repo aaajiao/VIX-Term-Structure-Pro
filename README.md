@@ -155,7 +155,7 @@ Default settings:
 
 This default means:
 
-- confirmed alerts may arrive after the close if daily external sources finalize late
+- confirmed alerts are based on the previous completed structure day and emit once on the next regular-session opportunity
 - preview alerts try to fire as early as possible
 - the alert message tells you which mode produced the alert
 
@@ -163,7 +163,7 @@ This default means:
 
 | Mode | Meaning |
 |:--|:--|
-| `Confirmed Daily Structure` | Alert only when the daily structure inputs are confirmed |
+| `Confirmed Daily Structure` | Snapshot one completed structure day and emit once on the next regular-session opportunity |
 | `Preview / Earliest Possible` | Preserve earliest-possible behavior for intraday previews |
 
 If `VIX Timeframe = Chart` in preview mode:
@@ -176,12 +176,12 @@ If `VIX Timeframe = Chart` in preview mode:
 
 | Policy | Behavior |
 |:--|:--|
-| `Allow if source confirms` | Post-close alerts are allowed when confirmed daily data arrives late |
-| `Regular Session Only` | Alerts are blocked outside the exchange-defined regular session, even if the chart shows extended hours |
+| `Allow if source confirms` | Preview mode may still alert after the close if inputs update late |
+| `Regular Session Only` | Preview alerts are blocked outside the exchange-defined regular session, even if the chart shows extended hours |
 
-### Why Alerts Can Appear After the Close
+### Why Confirmed No Longer Fires After The Close
 
-This is expected in some cases and is not necessarily a bug.
+`Confirmed Daily Structure` now waits for one completed structure day and then emits once during the next regular session. It no longer uses after-hours `1m` bars to keep re-evaluating the same daily transition.
 
 The score depends on daily external sources such as:
 
@@ -192,9 +192,7 @@ The score depends on daily external sources such as:
 - `INDEX:CPCI`
 - optional `CBOE:VVIX`
 
-Those feeds do not always finalize at the exact same time as the chart close. In `Confirmed Daily Structure` mode, the script may correctly wait for those inputs to settle, which can produce a post-close `[CONFIRMED]` alert.
-
-If you switch to `Regular Session Only`, blocked after-hours signals are consumed instead of replayed on the next `1m` bar or the next allowed session bar.
+Those feeds do not always finalize at the exact same time as the chart close. That timing still matters for preview alerts, but confirmed alerts now consume the completed structure day and wait for the next regular-session bar instead of replaying across after-hours `1m` bars.
 
 TradingView alerts run from a server-side snapshot of the script and its inputs. After changing alert timing or after-hours policy, delete and recreate the alert so the server picks up the new logic.
 
@@ -212,8 +210,8 @@ Alert state machine behavior:
 - level-based priority (`Lv1` to `Lv3`)
 - intrabar dedup with `varip`
 - cross-bar upgrade detection in preview mode
-- confirmed-mode dedup by structure day
-- adaptive cooldown measured in chart bars
+- confirmed-mode snapshot and single emit per structure day
+- adaptive cooldown measured in chart bars for preview mode
 
 ## Dashboard and Plotting
 
@@ -302,7 +300,6 @@ Recommended for most users:
 - use an exact `1D` chart if you want win-rate stats
 - `Trading Safe Mode = ON`
 - `Alert Timing Mode = Confirmed Daily Structure`
-- `After-Hours Alert Policy = Allow if source confirms`
 - `Sell Signal Strictness = High Win-Rate` if you want fewer, cleaner top signals
 - `Use Momentum Confirmation = ON`
 - `Use Weekly MTF Confirmation = OFF` or ON only if you want stricter filtering
@@ -334,8 +331,8 @@ Validation must be done in TradingView:
    - `Regular Session Only`
    - recreate the TradingView alert after each input change that affects timing/session behavior
 7. Switch `Sell Signal Strictness` between `Balanced (Legacy)` and `High Win-Rate` and confirm `✋ HOLD (Core)` appears when expected.
-8. Observe whether post-close confirmed alerts match delayed daily source updates when `Allow if source confirms` is selected.
-9. Verify that `Regular Session Only` does not replay the same blocked signal on the next after-hours `1m` bar or on the next regular-session bar.
+8. On an intraday ETF chart, verify `Confirmed Daily Structure` emits at most once for the same completed structure day and does not repeat across after-hours `1m` bars.
+9. In preview mode, verify `Regular Session Only` still blocks after-hours alerts on extended-hours `1m` bars.
 
 ## Current Highlights
 
@@ -343,7 +340,8 @@ Validation must be done in TradingView:
 - core euphoria confirmation can gate sell signals with `✋ HOLD (Core)`
 - exact `1D` charts include rolling buy-side and sell-side statistics
 - sell plots, alerts, and stats all use the final filtered sell signals
-- `Regular Session Only` now keys off the exchange regular session and suppresses after-hours signal replays
+- confirmed alerts now snapshot one structure day and emit once during the next regular session
+- `Regular Session Only` still keys off the exchange regular session for preview alerts
 
 ## Limitations
 
