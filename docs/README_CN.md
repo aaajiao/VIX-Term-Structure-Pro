@@ -210,6 +210,7 @@ QQQ: 🟢 BUY [PREVIEW] [Lv1] -> 🟡DIP | Score:4.0 Z:-1.8 VIX:28(HIGH) | Hybri
 - `Lv1` 到 `Lv3` 的等级优先级
 - 用 `varip` 做同一 bar 内去重
 - 预览模式保留跨 bar 升级提醒
+- 预览模式加入日内方向锁：同方向同级别同一交易日最多一次，仅严格升级可再次提醒
 - 确认模式按结构日快照并只发一次
 - 预览模式保留以图表 bar 为单位的自适应冷却
 
@@ -333,6 +334,7 @@ QQQ: 🟢 BUY [PREVIEW] [Lv1] -> 🟡DIP | Score:4.0 Z:-1.8 VIX:28(HIGH) | Hybri
 7. 在 `Balanced (Legacy)` 与 `High Win-Rate` 之间切换，确认需要时会显示 `✋ HOLD (Core)`。
 8. 在 ETF 的盘中图上确认 `Confirmed Daily Structure` 对同一个完整结构日最多只发一次，不会在盘后 `1m` 上重复。
 9. 在预览模式下确认 `Regular Session Only` 仍能拦住 extended hours 的盘后提醒。
+10. 在预览模式 + `Allow if source confirms` + extended-hours `1m` 下，确认同方向同级别在同一交易日内不会重复提醒；只有 `Lv1 -> Lv2 -> Lv3` 升级时才会再次提醒。
 
 ## 当前能力重点
 
@@ -342,6 +344,7 @@ QQQ: 🟢 BUY [PREVIEW] [Lv1] -> 🟡DIP | Score:4.0 Z:-1.8 VIX:28(HIGH) | Hybri
 - 卖出图表标签、提醒与统计统一基于最终过滤后的卖出信号
 - confirmed 提醒现在会对完整结构日做一次快照，并在下一次常规时段只发一次
 - `Regular Session Only` 仍按交易所常规时段约束预览提醒
+- preview 提醒新增日内方向锁：同方向同级别同日只发一次，仅升级可再次触发
 
 ## 限制说明
 

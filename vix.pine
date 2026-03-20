@@ -498,6 +498,7 @@ preview_sell_hedge = final_sell_hedge
 // Confirmed alerts snapshot one completed structure day and emit once on the next regular-session opportunity.
 new_confirmed_structure_day = not na(confirmed_structure_day_id) and (na(confirmed_structure_day_id[1]) or confirmed_structure_day_id != confirmed_structure_day_id[1])
 has_new_chart_day = year != year[1] or month != month[1] or dayofmonth != dayofmonth[1]
+chart_day_id = year * 10000 + month * 100 + dayofmonth
 
 var float last_confirmed_structure_score = na
 var int pending_confirmed_buy_level = 0
@@ -881,6 +882,7 @@ if show_table and barstate.islast
 // 2. varip K线内去重 - 同一K线弱信号不重复触发
 // 3. 等级升级触发 - 出现更强信号时立即触发新警报
 // 4. VIX Regime 自适应冷却 - 跨K线的额外过滤层
+// 5. 日内方向锁 - 同方向同级别当日只发一次，仅允许升级
 
 // varip: 追踪当前K线内已观察到的最高信号等级。
 // 即使提醒被盘后策略或冷却拦截，也要记账避免在同一方向上重放。
@@ -895,12 +897,23 @@ var int last_sell_alert_bar = 0
 var int prev_bar_buy_level = 0
 var int prev_bar_sell_level = 0
 
+// v7.12: 日内方向锁（同方向同级别只提醒一次）
+var int buy_day_latch_level = 0
+var int sell_day_latch_level = 0
+var int buy_day_latch_id = 0
+var int sell_day_latch_id = 0
+
 // 新K线开始时重置当前K线已观察等级，并保存上一K线等级
 if barstate.isnew
     prev_bar_buy_level := buy_alert_level_sent
     prev_bar_sell_level := sell_alert_level_sent
     buy_alert_level_sent := 0
     sell_alert_level_sent := 0
+    if has_new_chart_day
+        buy_day_latch_level := 0
+        sell_day_latch_level := 0
+        buy_day_latch_id := 0
+        sell_day_latch_id := 0
 
 // VIX Regime 自适应冷却：高波动减半，低波动加倍
 adaptive_cooldown = vix_regime == 3 ? math.round(alert_cooldown_base / 2) : vix_regime == 1 ? alert_cooldown_base * 2 : alert_cooldown_base
@@ -917,7 +930,9 @@ if enable_smart_alert
     is_rising_edge_buy = is_alert_preview_mode ? (has_buy_signal and not has_buy_signal_prev and current_buy_level > buy_alert_level_sent) : false
     is_cross_bar_upgrade_buy = is_alert_preview_mode ? (has_buy_signal and current_buy_level > prev_bar_buy_level and current_buy_level > buy_alert_level_sent) : false
     is_new_buy = is_rising_edge_buy or is_cross_bar_upgrade_buy
-    should_emit_buy = is_alert_preview_mode ? (allow_alert_now and is_new_buy and (bar_index - last_buy_alert_bar > adaptive_cooldown)) : (confirmed_emit_now and current_buy_level > 0 and pending_confirmed_structure_day != emitted_confirmed_buy_day)
+    active_buy_latch_level = buy_day_latch_id == chart_day_id ? buy_day_latch_level : 0
+    is_buy_day_latch_upgrade = current_buy_level > active_buy_latch_level
+    should_emit_buy = is_alert_preview_mode ? (allow_alert_now and is_new_buy and is_buy_day_latch_upgrade and (bar_index - last_buy_alert_bar > adaptive_cooldown)) : (confirmed_emit_now and current_buy_level > 0 and pending_confirmed_structure_day != emitted_confirmed_buy_day)
     
     if should_emit_buy
         // 构建消息头 (含等级标签 + 升级标记)
@@ -947,6 +962,8 @@ if enable_smart_alert
         alert(msg, alert_freq)
         if is_alert_preview_mode
             last_buy_alert_bar := bar_index
+            buy_day_latch_level := current_buy_level
+            buy_day_latch_id := chart_day_id
         else
             emitted_confirmed_buy_day := pending_confirmed_structure_day
 
@@ -965,7 +982,9 @@ if enable_smart_alert
     is_rising_edge_sell = is_alert_preview_mode ? (has_sell_signal and not has_sell_signal_prev and current_sell_level > sell_alert_level_sent) : false
     is_cross_bar_upgrade_sell = is_alert_preview_mode ? (has_sell_signal and current_sell_level > prev_bar_sell_level and current_sell_level > sell_alert_level_sent) : false
     is_new_sell = is_rising_edge_sell or is_cross_bar_upgrade_sell
-    should_emit_sell = is_alert_preview_mode ? (allow_alert_now and is_new_sell and (bar_index - last_sell_alert_bar > adaptive_cooldown)) : (confirmed_emit_now and current_sell_level > 0 and pending_confirmed_structure_day != emitted_confirmed_sell_day)
+    active_sell_latch_level = sell_day_latch_id == chart_day_id ? sell_day_latch_level : 0
+    is_sell_day_latch_upgrade = current_sell_level > active_sell_latch_level
+    should_emit_sell = is_alert_preview_mode ? (allow_alert_now and is_new_sell and is_sell_day_latch_upgrade and (bar_index - last_sell_alert_bar > adaptive_cooldown)) : (confirmed_emit_now and current_sell_level > 0 and pending_confirmed_structure_day != emitted_confirmed_sell_day)
     
     if should_emit_sell
         // 构建消息头 (含等级标签 + 升级标记)
@@ -993,6 +1012,8 @@ if enable_smart_alert
         alert(msg, alert_freq)
         if is_alert_preview_mode
             last_sell_alert_bar := bar_index
+            sell_day_latch_level := current_sell_level
+            sell_day_latch_id := chart_day_id
         else
             emitted_confirmed_sell_day := pending_confirmed_structure_day
 

@@ -210,6 +210,7 @@ Alert state machine behavior:
 - level-based priority (`Lv1` to `Lv3`)
 - intrabar dedup with `varip`
 - cross-bar upgrade detection in preview mode
+- preview-mode side latch: same-side same-level alerts emit at most once per chart day, only strict level upgrades can re-emit
 - confirmed-mode snapshot and single emit per structure day
 - adaptive cooldown measured in chart bars for preview mode
 
@@ -333,6 +334,7 @@ Validation must be done in TradingView:
 7. Switch `Sell Signal Strictness` between `Balanced (Legacy)` and `High Win-Rate` and confirm `✋ HOLD (Core)` appears when expected.
 8. On an intraday ETF chart, verify `Confirmed Daily Structure` emits at most once for the same completed structure day and does not repeat across after-hours `1m` bars.
 9. In preview mode, verify `Regular Session Only` still blocks after-hours alerts on extended-hours `1m` bars.
+10. In preview mode with `Allow if source confirms` on extended-hours `1m`, verify same-side same-level alerts do not repeat within one chart day; only `Lv1 -> Lv2 -> Lv3` upgrades can emit again.
 
 ## Current Highlights
 
@@ -342,6 +344,7 @@ Validation must be done in TradingView:
 - sell plots, alerts, and stats all use the final filtered sell signals
 - confirmed alerts now snapshot one structure day and emit once during the next regular session
 - `Regular Session Only` still keys off the exchange regular session for preview alerts
+- preview alerts now latch same-side same-level sends per chart day and only re-emit on strict upgrades
 
 ## Limitations
 
