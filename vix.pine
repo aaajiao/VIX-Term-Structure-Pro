@@ -541,6 +541,8 @@ alert_mode_tag = is_alert_preview_mode ? "[PREVIEW]" : "[CONFIRMED]"
 alert_mode_panel = is_alert_preview_mode ? (is_hybrid_alert_mode ? "PREVIEW*" : "PREVIEW") : "CONFIRMED"
 alert_mode_desc = is_alert_preview_mode ? (is_hybrid_alert_mode ? "Hybrid preview" : "Preview") : "Confirmed"
 regular_session_bar = not timeframe.isintraday or session.ismarket
+// 盘后 preview 的新边缘要消费当天方向锁，避免 extended-hours 1m 在收盘后反复重放。
+postmarket_preview_bar = is_alert_preview_mode and timeframe.isintraday and session.ispostmarket
 allow_alert_now = not is_regular_session_only or regular_session_bar
 confirmed_emit_now = timeframe.isintraday ? (regular_session_bar and (not new_confirmed_structure_day or has_new_chart_day)) : barstate.isconfirmed
 
@@ -932,6 +934,7 @@ if enable_smart_alert
     is_new_buy = is_rising_edge_buy or is_cross_bar_upgrade_buy
     active_buy_latch_level = buy_day_latch_id == chart_day_id ? buy_day_latch_level : 0
     is_buy_day_latch_upgrade = current_buy_level > active_buy_latch_level
+    should_latch_postmarket_buy = postmarket_preview_bar and is_new_buy and is_buy_day_latch_upgrade
     should_emit_buy = is_alert_preview_mode ? (allow_alert_now and is_new_buy and is_buy_day_latch_upgrade and (bar_index - last_buy_alert_bar > adaptive_cooldown)) : (confirmed_emit_now and current_buy_level > 0 and pending_confirmed_structure_day != emitted_confirmed_buy_day)
     
     if should_emit_buy
@@ -967,6 +970,10 @@ if enable_smart_alert
         else
             emitted_confirmed_buy_day := pending_confirmed_structure_day
 
+    if should_latch_postmarket_buy
+        buy_day_latch_level := current_buy_level
+        buy_day_latch_id := chart_day_id
+
     if is_new_buy
         buy_alert_level_sent := current_buy_level > buy_alert_level_sent ? current_buy_level : buy_alert_level_sent
     
@@ -984,6 +991,7 @@ if enable_smart_alert
     is_new_sell = is_rising_edge_sell or is_cross_bar_upgrade_sell
     active_sell_latch_level = sell_day_latch_id == chart_day_id ? sell_day_latch_level : 0
     is_sell_day_latch_upgrade = current_sell_level > active_sell_latch_level
+    should_latch_postmarket_sell = postmarket_preview_bar and is_new_sell and is_sell_day_latch_upgrade
     should_emit_sell = is_alert_preview_mode ? (allow_alert_now and is_new_sell and is_sell_day_latch_upgrade and (bar_index - last_sell_alert_bar > adaptive_cooldown)) : (confirmed_emit_now and current_sell_level > 0 and pending_confirmed_structure_day != emitted_confirmed_sell_day)
     
     if should_emit_sell
@@ -1016,6 +1024,10 @@ if enable_smart_alert
             sell_day_latch_id := chart_day_id
         else
             emitted_confirmed_sell_day := pending_confirmed_structure_day
+
+    if should_latch_postmarket_sell
+        sell_day_latch_level := current_sell_level
+        sell_day_latch_id := chart_day_id
 
     if is_new_sell
         sell_alert_level_sent := current_sell_level > sell_alert_level_sent ? current_sell_level : sell_alert_level_sent

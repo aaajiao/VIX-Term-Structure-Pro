@@ -179,6 +179,8 @@ If `VIX Timeframe = Chart` in preview mode:
 | `Allow if source confirms` | Preview mode may still alert after the close if inputs update late |
 | `Regular Session Only` | Preview alerts are blocked outside the exchange-defined regular session, even if the chart shows extended hours |
 
+For extended-hours `1m` charts, preview-mode post-close edges now also consume the same-day side latch. That prevents the same side and same level from replaying every minute after the close.
+
 ### Why Confirmed No Longer Fires After The Close
 
 `Confirmed Daily Structure` now waits for one completed structure day and then emits once during the next regular session. It no longer uses after-hours `1m` bars to keep re-evaluating the same daily transition.
@@ -211,6 +213,7 @@ Alert state machine behavior:
 - intrabar dedup with `varip`
 - cross-bar upgrade detection in preview mode
 - preview-mode side latch: same-side same-level alerts emit at most once per chart day, only strict level upgrades can re-emit
+- preview-mode postmarket edges also consume that same-day latch, preventing after-hours `1m` replay spam
 - confirmed-mode snapshot and single emit per structure day
 - adaptive cooldown measured in chart bars for preview mode
 
