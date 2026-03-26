@@ -510,8 +510,9 @@ var float pending_confirmed_vix = na
 var float pending_confirmed_skew = na
 var string pending_confirmed_vix_regime_txt = ""
 var string pending_confirmed_trend_status_txt = ""
-var int emitted_confirmed_buy_day = 0
-var int emitted_confirmed_sell_day = 0
+// confirmed 模式下同一结构日只发一次；用 varip 避免实时bar回滚导致重复触发。
+varip int emitted_confirmed_buy_day = 0
+varip int emitted_confirmed_sell_day = 0
 
 if new_confirmed_structure_day
     confirmed_prev_score = last_confirmed_structure_score
@@ -541,8 +542,8 @@ alert_mode_tag = is_alert_preview_mode ? "[PREVIEW]" : "[CONFIRMED]"
 alert_mode_panel = is_alert_preview_mode ? (is_hybrid_alert_mode ? "PREVIEW*" : "PREVIEW") : "CONFIRMED"
 alert_mode_desc = is_alert_preview_mode ? (is_hybrid_alert_mode ? "Hybrid preview" : "Preview") : "Confirmed"
 regular_session_bar = not timeframe.isintraday or session.ismarket
-// 盘后 preview 的新边缘要消费当天方向锁，避免 extended-hours 1m 在收盘后反复重放。
-postmarket_preview_bar = is_alert_preview_mode and timeframe.isintraday and session.ispostmarket
+// 非常规时段（盘前/盘后）统一按 extended 处理，避免不同品种会话定义差异导致漏拦截。
+extended_preview_bar = is_alert_preview_mode and timeframe.isintraday and not session.ismarket
 allow_alert_now = not is_regular_session_only or regular_session_bar
 confirmed_emit_now = timeframe.isintraday ? (regular_session_bar and (not new_confirmed_structure_day or has_new_chart_day)) : barstate.isconfirmed
 
@@ -891,19 +892,19 @@ if show_table and barstate.islast
 varip int buy_alert_level_sent = 0
 varip int sell_alert_level_sent = 0
 
-// var: 预览模式跨K线冷却追踪 (保留 VIX Regime 自适应冷却)
-var int last_buy_alert_bar = 0
-var int last_sell_alert_bar = 0
+// varip: 实时bar回滚安全。alert 发出后即刻记账，避免同一实时bar或后续bar重复重放。
+varip int last_buy_alert_bar = 0
+varip int last_sell_alert_bar = 0
 
 // v7.7: 追踪上一根K线的信号等级，用于检测跨K线升级
-var int prev_bar_buy_level = 0
-var int prev_bar_sell_level = 0
+varip int prev_bar_buy_level = 0
+varip int prev_bar_sell_level = 0
 
 // v7.12: 日内方向锁（同方向同级别只提醒一次）
-var int buy_day_latch_level = 0
-var int sell_day_latch_level = 0
-var int buy_day_latch_id = 0
-var int sell_day_latch_id = 0
+varip int buy_day_latch_level = 0
+varip int sell_day_latch_level = 0
+varip int buy_day_latch_id = 0
+varip int sell_day_latch_id = 0
 
 // 新K线开始时重置当前K线已观察等级，并保存上一K线等级
 if barstate.isnew
@@ -934,7 +935,7 @@ if enable_smart_alert
     is_new_buy = is_rising_edge_buy or is_cross_bar_upgrade_buy
     active_buy_latch_level = buy_day_latch_id == chart_day_id ? buy_day_latch_level : 0
     is_buy_day_latch_upgrade = current_buy_level > active_buy_latch_level
-    should_latch_postmarket_buy = postmarket_preview_bar and is_new_buy and is_buy_day_latch_upgrade
+    should_latch_extended_buy = extended_preview_bar and is_new_buy and is_buy_day_latch_upgrade
     should_emit_buy = is_alert_preview_mode ? (allow_alert_now and is_new_buy and is_buy_day_latch_upgrade and (bar_index - last_buy_alert_bar > adaptive_cooldown)) : (confirmed_emit_now and current_buy_level > 0 and pending_confirmed_structure_day != emitted_confirmed_buy_day)
     
     if should_emit_buy
@@ -970,7 +971,7 @@ if enable_smart_alert
         else
             emitted_confirmed_buy_day := pending_confirmed_structure_day
 
-    if should_latch_postmarket_buy
+    if should_latch_extended_buy
         buy_day_latch_level := current_buy_level
         buy_day_latch_id := chart_day_id
 
@@ -991,7 +992,7 @@ if enable_smart_alert
     is_new_sell = is_rising_edge_sell or is_cross_bar_upgrade_sell
     active_sell_latch_level = sell_day_latch_id == chart_day_id ? sell_day_latch_level : 0
     is_sell_day_latch_upgrade = current_sell_level > active_sell_latch_level
-    should_latch_postmarket_sell = postmarket_preview_bar and is_new_sell and is_sell_day_latch_upgrade
+    should_latch_extended_sell = extended_preview_bar and is_new_sell and is_sell_day_latch_upgrade
     should_emit_sell = is_alert_preview_mode ? (allow_alert_now and is_new_sell and is_sell_day_latch_upgrade and (bar_index - last_sell_alert_bar > adaptive_cooldown)) : (confirmed_emit_now and current_sell_level > 0 and pending_confirmed_structure_day != emitted_confirmed_sell_day)
     
     if should_emit_sell
@@ -1025,7 +1026,7 @@ if enable_smart_alert
         else
             emitted_confirmed_sell_day := pending_confirmed_structure_day
 
-    if should_latch_postmarket_sell
+    if should_latch_extended_sell
         sell_day_latch_level := current_sell_level
         sell_day_latch_id := chart_day_id
 
