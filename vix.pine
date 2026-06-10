@@ -1,9 +1,9 @@
 //@version=6
 // calc_bars_count uses a fixed 5000-bar execution window to stay within Pine's common historical buffer.
-indicator("VIX Term Structure Pro [v7.12]", overlay=false, max_lines_count=500, calc_bars_count=5000)
+indicator("VIX Term Structure Pro [v7.13]", overlay=false, max_lines_count=500, calc_bars_count=5000)
 
 // ╔════════════════════════════════════════════════════════════════════════════╗
-// ║                    VIX Term Structure Pro v7.12 使用指南                     ║
+// ║                    VIX Term Structure Pro v7.13 使用指南                     ║
 // ╠════════════════════════════════════════════════════════════════════════════╣
 // ║ 📊 仪表盘指标解读                                                           ║
 // ║----------------------------------------------------------------------------║
@@ -87,7 +87,7 @@ grp_data = "📡 Data Sources"
 trading_safe_mode = input.bool(true, "🛡️ Trading Safe Mode (Recommended)", group=grp_data, tooltip="ON: 实盘安全模式 Trading-safe\n    • 信号无重绘 Signals no repaint\n    • 面板VIX实时显示(ʳᵗ) Dashboard VIX real-time\nOFF: 预览模式 Preview mode\n    • 历史可能重绘 History may repaint")
 
 sym_vix_input = input.symbol("CBOE:VIX", "VIX Symbol", group=grp_data, tooltip="VIX数据源 VIX data source\n默认 Default: CBOE:VIX")
-vix_timeframe = input.string("Daily", "VIX Timeframe", options=["Daily", "Chart"], group=grp_data, tooltip="Daily: 日线结构源 daily structure source (稳定 stable)\nChart: 仅VIX跟随图表 only VIX follows chart\n其他结构因子仍可能使用日线确认 Other structure factors may still confirm on daily data")
+vix_timeframe = input.string("Daily", "VIX Timeframe", options=["Daily", "Chart"], group=grp_data, tooltip="Daily: 日线结构源 daily structure source (稳定 stable)\nChart: VIX显示/波动区间门控/自适应趋势均线选择(实时趋势过滤)/自适应冷却跟随图表周期 VIX display, regime gating, adaptive trend-MA selection (live trend filter) and adaptive cooldown follow the chart timeframe\nv7.13起评分始终基于日线结构计算 Since v7.13 Score is always computed on daily structure data")
 sym_pcr_input = input.symbol("INDEX:CPCI", "Put/Call Ratio Symbol", group=grp_data, tooltip="看跌/看涨比率 Put/Call Ratio\n默认 Default: INDEX:CPCI (指数期权 Index options)")
 manual_trend_src = input.symbol("SP:SPX", "Manual Trend Source", group=grp_data, tooltip="手动趋势源 Manual trend source\n仅当自动检测关闭时使用 Only used when Auto-Detect is OFF")
 
@@ -150,7 +150,7 @@ dip_return_bars = input.int(10, "🟡 DIP Return Period (Bars)", minval=5, maxva
 enable_smart_alert = input.bool(true, "🔔 Smart Alert", group=grp_stats, tooltip="启用智能警报 Enable Smart Alert\n单条消息汇总所有信号 Aggregated signal message")
 alert_timing_mode = input.string("Confirmed Daily Structure", "└─ Alert Timing Mode", options=["Confirmed Daily Structure", "Preview / Earliest Possible"], group=grp_stats, tooltip="Confirmed Daily Structure: 严格使用已完成的上一结构日 Strict previous completed structure day\n盘中只在下一次常规时段发出一次 confirmed Confirmed emits once on the next regular session\nPreview / Earliest Possible: 尽早预览 Hybrid preview\n可能仍受日线结构源更新时间影响 May still depend on delayed daily source updates")
 after_hours_alert_policy = input.string("Allow if source confirms", "└─ After-Hours Alert Policy", options=["Allow if source confirms", "Regular Session Only"], group=grp_stats, tooltip="Preview 模式使用 Used by Preview mode\nAllow if source confirms: 允许盘后预览提醒 Allow preview alerts after close\nRegular Session Only: 使用交易所常规时段，常规时段外不提醒 Use exchange-defined regular market hours; block alerts outside the regular session")
-alert_cooldown_base = input.int(5, "Alert Cooldown Base (Bars)", minval=1, maxval=20, group=grp_stats, tooltip="基础冷却间隔 Base cooldown\n高波动期减半 Halved in high vol")
+alert_cooldown_base = input.int(5, "Alert Cooldown Base (Bars)", minval=1, maxval=20, group=grp_stats, tooltip="基础冷却间隔 Base cooldown (bars)\n高波动期减半、低波动期加倍 Halved in high vol, doubled in low vol\n注意: 被冷却或时段策略拦截的信号会被直接丢弃, 不会延后补发 Note: signals blocked by cooldown or session policy are DISCARDED, never deferred or re-sent")
 alert_freq_mode = input.string("Real-time", "└─ Alert Frequency", options=["Once Per Bar", "Real-time"], group=grp_stats, tooltip="Once Per Bar: 每K线最多一次 Max once per bar\nReal-time: 实时触发 Trigger on every condition")
 alert_freq = alert_freq_mode == "Real-time" ? alert.freq_all : alert.freq_once_per_bar
 
@@ -172,6 +172,7 @@ use_adaptive = input.bool(true, "Use Adaptive Lookback (Z-Score)", group=grp_adv
 len_low      = input.int(252, "Lookback (Low Vol)", minval=50, group=grp_advanced, tooltip="低波动回溯 Low vol lookback\n252=1年 1 year")
 len_high     = input.int(126, "Lookback (High Vol)", minval=20, group=grp_advanced, tooltip="高波动回溯 High vol lookback\n126=半年 6 months")
 vol_thresh   = input.float(20.0, "Vol Regime Threshold", minval=10, group=grp_advanced, tooltip="波动区间阈值 Vol regime threshold\nVIX高于此值=高波动期 Above=high vol")
+vol_hysteresis = input.float(0.0, "└─ Vol Regime Hysteresis Band", minval=0.0, maxval=10.0, step=0.5, group=grp_advanced, tooltip="波动切换滞回带 Hysteresis band for Z lookback switching\nVIX高于 阈值+带宽 才切到高波动回溯, 回到 阈值-带宽 及以下才切回 Switch to high-vol lookback only above threshold+band, switch back only at or below threshold-band\n0 = 即时切换 (默认, 与 v7.12 行为一致) 0 = instant switching (default, matches v7.12)\n建议试验值 Suggested value to try: 2.0")
 
 // SKEW 设置
 skew_mode    = input.string("Relative (Z-Score)", "SKEW Logic Mode", options=["Relative (Z-Score)", "Percentile (Adaptive)", "Absolute (>140)"], group=grp_advanced, tooltip="SKEW判断模式 SKEW logic mode\nZ-Score: 相对标准差 / Percentile: 百分位 / Absolute: 固定值")
@@ -215,12 +216,13 @@ vix     = request.security(sym_vix_input, vix_tf, close, lookahead=lookahead_set
 // 最后一根K线用 vix_rt（实时），历史K线用 vix（避免重绘）
 vix_rt = request.security(sym_vix_input, vix_tf, close, lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
 vix_display = barstate.islast ? vix_rt : vix
-spx_day_id = request.security("SP:SPX", "D", year * 10000 + month * 100 + dayofmonth, lookahead=lookahead_setting, ignore_invalid_symbol=true)
-confirmed_structure_day_id = request.security("SP:SPX", "D", year * 10000 + month * 100 + dayofmonth, lookahead=barmerge.lookahead_off, ignore_invalid_symbol=true)
+// v7.13: 结构日ID表达式；在日线 security 上下文中按 SPX 日线日期求值 / Structure-day id; re-evaluates to the SPX daily date inside the "D" security context
+day_id_src = year * 10000 + month * 100 + dayofmonth
 
-vx1     = request.security("CBOE:VX1!", "D", close, lookahead=lookahead_setting, ignore_invalid_symbol=true)
+// v7.13: VX1 收盘+成交量合并为单次 tuple 请求，控制 request.*() 唯一调用数（上限40，嵌套上下文会重复计数）
+// v7.13: VX1 close+volume packed into one tuple request to control unique request.*() count (limit 40; nested contexts re-count inner calls)
+[vx1, vx1_vol] = request.security("CBOE:VX1!", "D", [close, volume], lookahead=lookahead_setting, ignore_invalid_symbol=true)
 vx2     = request.security("CBOE:VX2!", "D", close, lookahead=lookahead_setting, ignore_invalid_symbol=true)
-vx1_vol = request.security("CBOE:VX1!", "D", volume, lookahead=lookahead_setting, ignore_invalid_symbol=true)
 skew    = request.security("CBOE:SKEW", "D", close, lookahead=lookahead_setting, ignore_invalid_symbol=true)
 pcr     = request.security(sym_pcr_input, "D", close, lookahead=lookahead_setting, ignore_invalid_symbol=true)
 
@@ -241,34 +243,24 @@ is_high_vol_regime = not na(vix) and vix > vol_thresh
 adaptive_ma_len = is_high_vol_regime ? trend_ma_length_high : trend_ma_length_low
 
 // v7.7: 趋势均线也统一使用 lookahead_setting，确保回测/实盘模式一致
-// 获取各指数价格和趋势均线
-spx_close = request.security("SP:SPX", "D", close, lookahead=lookahead_setting, ignore_invalid_symbol=true)
-ndx_close = request.security("NASDAQ:NDX", "D", close, lookahead=lookahead_setting, ignore_invalid_symbol=true)
-rut_close = request.security("TVC:RUT", "D", close, lookahead=lookahead_setting, ignore_invalid_symbol=true)
-manual_close = request.security(manual_trend_src, "D", close, lookahead=lookahead_setting, ignore_invalid_symbol=true)
+// v7.13: 每个指数的收盘价+全部趋势均线合并为单次 tuple 请求（原 5 个调用 → 1 个），
+// 否则两个日线上下文 tuple 会按嵌套上下文重复计数这些内层请求，突破 40 个 request.*() 上限
+// v7.13: Each index's close + all trend MAs packed into ONE tuple request (was 5 calls -> 1);
+// otherwise the two daily-context tuples re-count these inner calls per nested context and blow the 40 request.*() limit
+f_trend_pack(string ma_type, int len_low, int len_high, int kama_len) =>
+    // CW10003: ta.* 每根K线都先计算，再用三元选择；len_low 的 SMA 与 ma_adapt_low 复用同一次计算
+    // CW10003: call ta.* on every bar first, then select; the len_low SMA is shared with ma_adapt_low
+    ma_ema_fixed = ta.ema(close, len_low)
+    ma_adapt_high = ta.sma(close, len_high)
+    ma_adapt_low = ta.sma(close, len_low)
+    ma_fixed = ma_type == "EMA" ? ma_ema_fixed : ma_adapt_low
+    ma_kama = calc_kama(close, kama_len, 2, 30)
+    [close, ma_fixed, ma_adapt_high, ma_adapt_low, ma_kama]
 
-// 根据模式获取不同的趋势均线
-// Fixed 模式：使用用户选择的 SMA/EMA 和固定长度
-spx_ma_fixed = request.security("SP:SPX", "D", trend_ma_type == "EMA" ? ta.ema(close, trend_ma_length_low) : ta.sma(close, trend_ma_length_low), lookahead=lookahead_setting, ignore_invalid_symbol=true)
-ndx_ma_fixed = request.security("NASDAQ:NDX", "D", trend_ma_type == "EMA" ? ta.ema(close, trend_ma_length_low) : ta.sma(close, trend_ma_length_low), lookahead=lookahead_setting, ignore_invalid_symbol=true)
-rut_ma_fixed = request.security("TVC:RUT", "D", trend_ma_type == "EMA" ? ta.ema(close, trend_ma_length_low) : ta.sma(close, trend_ma_length_low), lookahead=lookahead_setting, ignore_invalid_symbol=true)
-manual_ma_fixed = request.security(manual_trend_src, "D", trend_ma_type == "EMA" ? ta.ema(close, trend_ma_length_low) : ta.sma(close, trend_ma_length_low), lookahead=lookahead_setting, ignore_invalid_symbol=true)
-
-// Adaptive 模式：根据 VIX 水平动态选择长度（使用 SMA）
-spx_ma_adapt_high = request.security("SP:SPX", "D", ta.sma(close, trend_ma_length_high), lookahead=lookahead_setting, ignore_invalid_symbol=true)
-spx_ma_adapt_low = request.security("SP:SPX", "D", ta.sma(close, trend_ma_length_low), lookahead=lookahead_setting, ignore_invalid_symbol=true)
-ndx_ma_adapt_high = request.security("NASDAQ:NDX", "D", ta.sma(close, trend_ma_length_high), lookahead=lookahead_setting, ignore_invalid_symbol=true)
-ndx_ma_adapt_low = request.security("NASDAQ:NDX", "D", ta.sma(close, trend_ma_length_low), lookahead=lookahead_setting, ignore_invalid_symbol=true)
-rut_ma_adapt_high = request.security("TVC:RUT", "D", ta.sma(close, trend_ma_length_high), lookahead=lookahead_setting, ignore_invalid_symbol=true)
-rut_ma_adapt_low = request.security("TVC:RUT", "D", ta.sma(close, trend_ma_length_low), lookahead=lookahead_setting, ignore_invalid_symbol=true)
-manual_ma_adapt_high = request.security(manual_trend_src, "D", ta.sma(close, trend_ma_length_high), lookahead=lookahead_setting, ignore_invalid_symbol=true)
-manual_ma_adapt_low = request.security(manual_trend_src, "D", ta.sma(close, trend_ma_length_low), lookahead=lookahead_setting, ignore_invalid_symbol=true)
-
-// KAMA 模式：Kaufman 自适应均线 (使用自定义实现)
-spx_ma_kama = request.security("SP:SPX", "D", calc_kama(close, kama_length, 2, 30), lookahead=lookahead_setting, ignore_invalid_symbol=true)
-ndx_ma_kama = request.security("NASDAQ:NDX", "D", calc_kama(close, kama_length, 2, 30), lookahead=lookahead_setting, ignore_invalid_symbol=true)
-rut_ma_kama = request.security("TVC:RUT", "D", calc_kama(close, kama_length, 2, 30), lookahead=lookahead_setting, ignore_invalid_symbol=true)
-manual_ma_kama = request.security(manual_trend_src, "D", calc_kama(close, kama_length, 2, 30), lookahead=lookahead_setting, ignore_invalid_symbol=true)
+[spx_close, spx_ma_fixed, spx_ma_adapt_high, spx_ma_adapt_low, spx_ma_kama] = request.security("SP:SPX", "D", f_trend_pack(trend_ma_type, trend_ma_length_low, trend_ma_length_high, kama_length), lookahead=lookahead_setting, ignore_invalid_symbol=true)
+[ndx_close, ndx_ma_fixed, ndx_ma_adapt_high, ndx_ma_adapt_low, ndx_ma_kama] = request.security("NASDAQ:NDX", "D", f_trend_pack(trend_ma_type, trend_ma_length_low, trend_ma_length_high, kama_length), lookahead=lookahead_setting, ignore_invalid_symbol=true)
+[rut_close, rut_ma_fixed, rut_ma_adapt_high, rut_ma_adapt_low, rut_ma_kama] = request.security("TVC:RUT", "D", f_trend_pack(trend_ma_type, trend_ma_length_low, trend_ma_length_high, kama_length), lookahead=lookahead_setting, ignore_invalid_symbol=true)
+[manual_close, manual_ma_fixed, manual_ma_adapt_high, manual_ma_adapt_low, manual_ma_kama] = request.security(manual_trend_src, "D", f_trend_pack(trend_ma_type, trend_ma_length_low, trend_ma_length_high, kama_length), lookahead=lookahead_setting, ignore_invalid_symbol=true)
 
 // 根据模式选择最终使用的均线
 spx_trend_ma = trend_ma_mode == "KAMA" ? spx_ma_kama : trend_ma_mode == "Adaptive" ? (is_high_vol_regime ? spx_ma_adapt_high : spx_ma_adapt_low) : spx_ma_fixed
@@ -285,11 +277,12 @@ is_spx_bull = not na(spx_close) and not na(spx_trend_ma) ? (spx_close > spx_tren
 is_ndx_bull = not na(ndx_close) and not na(ndx_trend_ma) ? (ndx_close > ndx_trend_ma) : true
 // RUT 趋势判断
 is_rut_bull = not na(rut_close) and not na(rut_trend_ma) ? (rut_close > rut_trend_ma) : true
+// 手动趋势源判断（v7.13: 拆为独立变量，供 confirmed 快照 tuple 复用 standalone manual trend gate, reused by the confirmed snapshot tuple）
+is_manual_bull = not na(manual_close) and not na(manual_trend_ma) ? (manual_close > manual_trend_ma) : true
 
 // 主趋势判断（用于评分系统的过滤）
-is_primary_bull = auto_detect_index ? 
-                  (is_russell_chart ? is_rut_bull : is_nasdaq_chart ? is_ndx_bull : is_spx_bull) : 
-                  (not na(manual_close) and not na(manual_trend_ma) ? (manual_close > manual_trend_ma) : true)
+is_auto_bull = is_russell_chart ? is_rut_bull : is_nasdaq_chart ? is_ndx_bull : is_spx_bull
+is_primary_bull = auto_detect_index ? is_auto_bull : is_manual_bull
 
 // 趋势状态文本（三指数合并显示）
 spx_emoji = is_spx_bull ? "🟢" : "🔴"
@@ -335,25 +328,40 @@ is_basis_calm  = use_adaptive_thresholds ? (vix_basis < vix_basis_pct_low) : (vi
 is_pcr_panic = not na(pcr) and (use_adaptive_thresholds ? (pcr > pcr_pct_high) : (pcr > 1.20))
 is_pcr_calm  = not na(pcr) and (use_adaptive_thresholds ? (pcr < pcr_pct_low) : (pcr < 0.70))
 
-is_high_vol = valid_data and (vix > vol_thresh)
+// v7.13 (M4): 滞回带防止 VIX 在阈值附近来回切换 Z 回溯期；无 var 状态，可在 security 上下文中独立实例化
+// Hysteresis stops Z-lookback flip-flop near vol_thresh; stateless self-referential form instantiates per security context.
+// band=0 时每根K线必然落入 above/below 之一（数据无效也归入 below），与 v7.12 逐K线完全一致
+// With band=0 every bar resolves to above/below (invalid data falls into below), reproducing v7.12 bar-for-bar.
+vol_above_hi = valid_data and vix > vol_thresh + vol_hysteresis
+vol_below_lo = not valid_data or vix <= vol_thresh - vol_hysteresis
+float is_high_vol_state = na
+is_high_vol_state := vol_above_hi ? 1.0 : vol_below_lo ? 0.0 : nz(is_high_vol_state[1], 0.0)
+is_high_vol = is_high_vol_state > 0.5
 lookback    = use_adaptive ? (is_high_vol ? len_high : len_low) : len_low
 avg   = ta.sma(term_spread, lookback)
 stdev = ta.stdev(term_spread, lookback)
 raw_z = (valid_data and stdev != 0) ? (term_spread - avg) / stdev : 0.0
-z     = ta.ema(raw_z, smooth_dyn)
+z_chart = ta.ema(raw_z, smooth_dyn)
 
 // Z-Score 动量（变化率）- 带中性区域
-z_roc = z - z[momentum_bars]
-z_momentum_bullish = z_roc < -z_momentum_neutral_zone  // Z 在下降超过阈值（恐慌加剧）
-z_momentum_bearish = z_roc > z_momentum_neutral_zone   // Z 在上升超过阈值（贪婪加剧）
+z_roc = z_chart - z_chart[momentum_bars]
+z_momentum_bullish_chart = z_roc < -z_momentum_neutral_zone  // Z 在下降超过阈值（恐慌加剧）
+z_momentum_bearish_chart = z_roc > z_momentum_neutral_zone   // Z 在上升超过阈值（贪婪加剧）
 z_momentum_flat = math.abs(z_roc) <= z_momentum_neutral_zone  // 中性区域
 
 // 周线 MTF 确认 (v7.7: 统一 lookahead 策略)
 // v7.10: 使用 SPX 日历对齐（VIX 为 SPX 衍生品），确保跨图表一致性
-z_weekly = request.security("SP:SPX", "W", z, lookahead=lookahead_setting, ignore_invalid_symbol=true)
+z_weekly = request.security("SP:SPX", "W", z_chart, lookahead=lookahead_setting, ignore_invalid_symbol=true)
 // v7.9: 当 MTF 确认开启但周线数据不可用时，不允许信号通过（更保守）
-is_weekly_buy_aligned = not na(z_weekly) ? z_weekly < -thresh_mid : not use_mtf_confirm
-is_weekly_sell_aligned = not na(z_weekly) ? z_weekly > thresh_mid : not use_mtf_confirm
+is_weekly_buy_aligned_chart = not na(z_weekly) ? z_weekly < -thresh_mid : not use_mtf_confirm
+is_weekly_sell_aligned_chart = not na(z_weekly) ? z_weekly > thresh_mid : not use_mtf_confirm
+// v7.13: confirmed 专用周线源 — [1] + 固定 lookahead_on，历史与实时一致返回上一已完成周（外层请求与实盘安全模式开关解耦）
+// Confirmed-only weekly source: [1] + hardcoded lookahead_on returns the last COMPLETED week identically on historical and realtime bars (outer request decoupled from the Trading Safe Mode toggle).
+// 注意: z_chart 的内层日线请求在周线上下文中是 D-in-W（低周期请求），仍随安全模式开关采样——开=取每周最后一个日线值(周五)，关=取第一个(周一)
+// Note: z_chart's inner daily requests become D-in-W (lower-TF) inside the weekly context and still follow the toggle — Safe Mode ON samples each completed week's LAST daily bar (Friday), OFF its FIRST (Monday).
+z_weekly_confirmed = request.security("SP:SPX", "W", z_chart[1], lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
+is_weekly_buy_aligned_confirmed = not na(z_weekly_confirmed) ? z_weekly_confirmed < -thresh_mid : not use_mtf_confirm
+is_weekly_sell_aligned_confirmed = not na(z_weekly_confirmed) ? z_weekly_confirmed > thresh_mid : not use_mtf_confirm
 
 // Smart SKEW - 优化：支持百分位数模式
 skew_avg   = ta.sma(skew, skew_len)
@@ -395,27 +403,52 @@ is_vol_spike  = vx1_vol >= vol_ma * 2.5
 is_vol_high   = vx1_vol >= vol_ma * 1.5 
 col_vol = is_vol_spike ? color.new(color.yellow, 30) : is_vol_high ? color.new(color.aqua, 60) : color.new(color.gray, 90)
 vol_visual_boost = is_vol_spike ? 1.2 : 1.0 
-has_core_panic_confirmation = contango_pct < 0 or is_basis_panic or is_pcr_panic or is_vol_spike or (use_vvix and is_vvix_panic)
-has_core_euphoria_confirmation = is_basis_calm or is_pcr_calm or is_skew_high or contango_pct > 10 or (use_vvix and is_vvix_calm)
+has_core_panic_confirmation_chart = contango_pct < 0 or is_basis_panic or is_pcr_panic or is_vol_spike or (use_vvix and is_vvix_panic)
+has_core_euphoria_confirmation_chart = is_basis_calm or is_pcr_calm or is_skew_high or contango_pct > 10 or (use_vvix and is_vvix_calm)
 sell_requires_core_confirmation = sell_strictness == "High Win-Rate"
 
 // ========== 4. AI 信号算法 (Enhanced v7.0 - 模块化) ==========
-var float score = 0.0
 
 // 使用模块化评分函数
 // v7.10: Score 为纯 VIX 结构客观评分，不再包含趋势惩罚
 // 趋势过滤仅影响信号展示（BUY DIP → NO TRADE），不改变 Score
-score := calc_z_score_points(z, thresh_mid, thresh_strong) +
+float score_core_chart = calc_z_score_points(z_chart, thresh_mid, thresh_strong) +
          calc_contango_points(contango_pct) +
          calc_basis_points(is_basis_panic, is_basis_calm) +
          calc_skew_points(is_skew_high, is_skew_low) +
          calc_pcr_points(is_pcr_panic, is_pcr_calm) +
          calc_vvix_points(is_vvix_panic, is_vvix_calm, use_vvix) +
-         (is_vol_spike and z < -thresh_mid ? 1 : 0) +
-         (use_momentum_confirm and z < -thresh_mid and z_momentum_bullish ? 1 : 0) +
-         (use_momentum_confirm and z > thresh_mid and z_momentum_bearish ? -1 : 0) +
-         (use_mtf_confirm and z < -thresh_mid and is_weekly_buy_aligned ? 1 : 0) +
-         (use_mtf_confirm and z > thresh_mid and is_weekly_sell_aligned ? -1 : 0)
+         (is_vol_spike and z_chart < -thresh_mid ? 1 : 0) +
+         (use_momentum_confirm and z_chart < -thresh_mid and z_momentum_bullish_chart ? 1 : 0) +
+         (use_momentum_confirm and z_chart > thresh_mid and z_momentum_bearish_chart ? -1 : 0)
+// v7.13: MTF 项拆分为 live / confirmed 两套：live 跟随实盘安全模式，confirmed 使用固定 lookahead 的已完成周线源
+// MTF terms split: live variant follows Trading Safe Mode; confirmed variant uses the hardcoded-lookahead completed-week source (toggle-independent).
+mtf_buy_pts_live = use_mtf_confirm and z_chart < -thresh_mid and is_weekly_buy_aligned_chart ? 1 : 0
+mtf_sell_pts_live = use_mtf_confirm and z_chart > thresh_mid and is_weekly_sell_aligned_chart ? -1 : 0
+mtf_buy_pts_confirmed = use_mtf_confirm and z_chart < -thresh_mid and is_weekly_buy_aligned_confirmed ? 1 : 0
+mtf_sell_pts_confirmed = use_mtf_confirm and z_chart > thresh_mid and is_weekly_sell_aligned_confirmed ? -1 : 0
+float score_chart = score_core_chart + mtf_buy_pts_live + mtf_sell_pts_live
+float score_confirmed_chart = score_core_chart + mtf_buy_pts_confirmed + mtf_sell_pts_confirmed
+
+// ========== 4.1 日线上下文评分源 (v7.13 Daily-Context Score Sourcing) ==========
+// H2: Score 及其门控因子在 SP:SPX 日线上下文统一计算：盘中与 1D 图得到一致的日线数值；周线/月线图按每根K线采样一个日线值（默认安全模式取最后一个日线值）
+// H2: Score and its gates are evaluated in the SP:SPX daily context — intraday and 1D charts see the 1D values; >1D charts sample one daily value per chart bar (last daily value in default safe mode).
+// lookahead 跟随实盘安全模式 lookahead follows Trading Safe Mode:
+// ON = lookahead_off: 历史K线=已完成交易日, 实时K线=发展中的当日值 historical = completed days, realtime = developing day
+// OFF = lookahead_on: 历史盘中K线=当日最终值(重绘语义与 v7.12 一致, 数值已改为日线口径) historical intraday = same-day final values (repaint semantics as in v7.12; values are now daily-context)
+[score, z, z_momentum_bullish, z_momentum_bearish, has_core_panic_confirmation, has_core_euphoria_confirmation, is_weekly_buy_aligned, is_weekly_sell_aligned] = request.security("SP:SPX", "D", [score_chart, z_chart, z_momentum_bullish_chart, z_momentum_bearish_chart, has_core_panic_confirmation_chart, has_core_euphoria_confirmation_chart, is_weekly_buy_aligned_chart, is_weekly_sell_aligned_chart], lookahead=lookahead_setting, ignore_invalid_symbol=true)
+
+// H1: confirmed 锚点 — 元素逐项 [1] 偏移 + 固定 lookahead_on，在历史与实时K线上一致地返回上一已完成结构日
+// 链路级解耦：confirmed 链内的 D-in-D 内层请求对开关不敏感（前提是符号遵循美股日历；24小时日历的自定义 VIX/PCR/趋势符号会让快照在开关间偏移一天），故默认配置下 confirmed 路径不随安全模式开关变化
+// H1: confirmed anchor — per-element [1] offset + hardcoded lookahead_on returns the last COMPLETED structure day identically on historical and realtime bars (canonical non-repainting HTF pattern).
+// Chain-level decoupling: the inner D-in-D requests in the confirmed chain are toggle-inert (assuming US-calendar symbols; 24h-calendar custom VIX/PCR/trend symbols shift the snapshot one day between toggle states), so in the default config the confirmed path is independent of the Trading Safe Mode toggle.
+// 例外: use_mtf_confirm 开启时，周线 MTF 腿（z_weekly_confirmed）在周线上下文内的 D-in-W 日线采样仍随开关变化（开=周五样本，关=周一样本），confirmed 评分可能相差 ±1——建议保持安全模式开启
+// Exception: with use_mtf_confirm ON, the weekly MTF leg (z_weekly_confirmed) samples its inner daily data D-in-W and still follows the toggle (ON = Friday sample, OFF = Monday sample), which can shift the confirmed score by +/-1 — keep Safe Mode ON.
+[confirmed_day_id_d, confirmed_score_d, confirmed_z_d, confirmed_vix_d, confirmed_skew_d, confirmed_spx_bull_d, confirmed_ndx_bull_d, confirmed_rut_bull_d, confirmed_manual_bull_d, confirmed_z_mom_bull_d, confirmed_z_mom_bear_d, confirmed_core_panic_d, confirmed_core_euphoria_d, confirmed_weekly_buy_d, confirmed_weekly_sell_d] = request.security("SP:SPX", "D", [day_id_src[1], score_confirmed_chart[1], z_chart[1], vix[1], skew[1], is_spx_bull[1], is_ndx_bull[1], is_rut_bull[1], is_manual_bull[1], z_momentum_bullish_chart[1], z_momentum_bearish_chart[1], has_core_panic_confirmation_chart[1], has_core_euphoria_confirmation_chart[1], is_weekly_buy_aligned_confirmed[1], is_weekly_sell_aligned_confirmed[1]], lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
+
+// 盘中锚定到已完成结构日；日线及以上保持图表自身日期，逐K线快照+收盘发送（保留 v7.12 的 1D 行为）
+// Intraday anchors to the completed structure day; 1D+ keeps the chart's own date so the v7.12 same-bar-close semantics are preserved.
+confirmed_structure_day_id = timeframe.isintraday ? math.round(confirmed_day_id_d) : day_id_src
 
 // ========== 5. 三级买入信号 (v7.0 新增, v7.3 优化) ==========
 // 基于 Score 评级的信号触发（首次进入该评级时触发）
@@ -498,7 +531,7 @@ preview_sell_hedge = final_sell_hedge
 // Confirmed alerts snapshot one completed structure day and emit once on the next regular-session opportunity.
 new_confirmed_structure_day = not na(confirmed_structure_day_id) and (na(confirmed_structure_day_id[1]) or confirmed_structure_day_id != confirmed_structure_day_id[1])
 has_new_chart_day = year != year[1] or month != month[1] or dayofmonth != dayofmonth[1]
-chart_day_id = year * 10000 + month * 100 + dayofmonth
+chart_day_id = day_id_src
 
 var float last_confirmed_structure_score = na
 var int pending_confirmed_buy_level = 0
@@ -514,26 +547,51 @@ var string pending_confirmed_trend_status_txt = ""
 varip int emitted_confirmed_buy_day = 0
 varip int emitted_confirmed_sell_day = 0
 
+// v7.13: confirmed 数据源 — 盘中取已完成结构日（tuple），日线及以上沿用当根K线实时值（v7.12 语义）
+// Confirmed feed: intraday uses the completed structure day tuple; 1D+ keeps the live same-bar values (v7.12 semantics).
+confirmed_feed_score = timeframe.isintraday ? confirmed_score_d : score
+confirmed_feed_z = timeframe.isintraday ? confirmed_z_d : z
+confirmed_feed_vix = timeframe.isintraday ? confirmed_vix_d : vix
+confirmed_feed_skew = timeframe.isintraday ? confirmed_skew_d : skew
+confirmed_feed_vix_regime = confirmed_feed_vix < vix_low_thresh ? 1 : confirmed_feed_vix > vix_high_thresh ? 3 : 2
+confirmed_feed_vix_regime_txt = confirmed_feed_vix_regime == 1 ? "LOW" : confirmed_feed_vix_regime == 3 ? "HIGH" : "NORM"
+confirmed_trend_txt_d = (confirmed_spx_bull_d ? "🟢" : "🔴") + "SPX " + (confirmed_ndx_bull_d ? "🟢" : "🔴") + "NDX " + (confirmed_rut_bull_d ? "🟢" : "🔴") + "RUT"
+confirmed_feed_trend_txt = timeframe.isintraday ? confirmed_trend_txt_d : trend_status_txt
+// v7.13: confirmed 趋势门控同样取自已完成结构日快照（与告警趋势文本同源），不读取实时趋势，保证重载一致并与安全模式开关解耦
+// Confirmed trend gate also comes from the completed-structure-day snapshot (same source as the alert trend text): no live trend read, reload-stable, Trading Safe Mode independent.
+// 注意: is_primary_bull 不能直接放入 tuple（syminfo.ticker 在 security 上下文中解析为 SPX，会破坏自动识别），故在图表层用已快照的分指数布尔值重建
+// Note: is_primary_bull must NOT go into the tuple (syminfo.ticker resolves to SPX inside the security context, breaking auto-detect); rebuild at chart level from the snapshotted per-index bools.
+confirmed_auto_bull_d = is_russell_chart ? confirmed_rut_bull_d : is_nasdaq_chart ? confirmed_ndx_bull_d : confirmed_spx_bull_d
+confirmed_primary_bull_d = auto_detect_index ? confirmed_auto_bull_d : confirmed_manual_bull_d
+confirmed_signal_allowed_d = use_trend_filter ? confirmed_primary_bull_d : true
+confirmed_feed_signal_allowed = timeframe.isintraday ? confirmed_signal_allowed_d : is_signal_allowed
+confirmed_d_momentum_buy_ok = confirmed_z_mom_bull_d or (use_mtf_confirm and confirmed_weekly_buy_d) or not use_momentum_confirm
+confirmed_d_momentum_sell_ok = confirmed_z_mom_bear_d or (use_mtf_confirm and confirmed_weekly_sell_d) or not use_momentum_confirm
+confirmed_feed_momentum_buy_ok = timeframe.isintraday ? confirmed_d_momentum_buy_ok : is_buy_dip_momentum_ok
+confirmed_feed_momentum_sell_ok = timeframe.isintraday ? confirmed_d_momentum_sell_ok : is_sell_hedge_momentum_ok
+confirmed_feed_core_panic = timeframe.isintraday ? confirmed_core_panic_d : has_core_panic_confirmation
+confirmed_feed_core_euphoria = timeframe.isintraday ? confirmed_core_euphoria_d : has_core_euphoria_confirmation
+
 if new_confirmed_structure_day
     confirmed_prev_score = last_confirmed_structure_score
     confirmed_has_prev = not na(confirmed_prev_score)
-    confirmed_sell_core_ok = not sell_requires_core_confirmation or has_core_euphoria_confirmation
-    confirmed_crash_buy = confirmed_has_prev and score >= 6 and confirmed_prev_score < 6
-    confirmed_strong_buy = confirmed_has_prev and score >= 5 and score < 6 and confirmed_prev_score < 5
-    confirmed_buy_dip = confirmed_has_prev and score >= min_score_buy and score < 5 and confirmed_prev_score < min_score_buy and vix_regime != 3 and is_buy_dip_momentum_ok and is_signal_allowed and z < -thresh_mid and has_core_panic_confirmation
-    confirmed_euphoria_sell = confirmed_has_prev and score <= -6 and confirmed_prev_score > -6
-    confirmed_strong_sell = confirmed_has_prev and score <= -5 and score > -6 and confirmed_prev_score > -5 and confirmed_sell_core_ok
-    confirmed_sell_hedge = confirmed_has_prev and score <= -2 and score > -5 and confirmed_prev_score > -2 and vix_regime != 1 and is_sell_hedge_momentum_ok and confirmed_sell_core_ok
+    confirmed_sell_core_ok = not sell_requires_core_confirmation or confirmed_feed_core_euphoria
+    confirmed_crash_buy = confirmed_has_prev and confirmed_feed_score >= 6 and confirmed_prev_score < 6
+    confirmed_strong_buy = confirmed_has_prev and confirmed_feed_score >= 5 and confirmed_feed_score < 6 and confirmed_prev_score < 5
+    confirmed_buy_dip = confirmed_has_prev and confirmed_feed_score >= min_score_buy and confirmed_feed_score < 5 and confirmed_prev_score < min_score_buy and confirmed_feed_vix_regime != 3 and confirmed_feed_momentum_buy_ok and confirmed_feed_signal_allowed and confirmed_feed_z < -thresh_mid and confirmed_feed_core_panic
+    confirmed_euphoria_sell = confirmed_has_prev and confirmed_feed_score <= -6 and confirmed_prev_score > -6
+    confirmed_strong_sell = confirmed_has_prev and confirmed_feed_score <= -5 and confirmed_feed_score > -6 and confirmed_prev_score > -5 and confirmed_sell_core_ok
+    confirmed_sell_hedge = confirmed_has_prev and confirmed_feed_score <= -2 and confirmed_feed_score > -5 and confirmed_prev_score > -2 and confirmed_feed_vix_regime != 1 and confirmed_feed_momentum_sell_ok and confirmed_sell_core_ok
     pending_confirmed_buy_level := f_buy_signal_level(confirmed_crash_buy, confirmed_strong_buy, confirmed_buy_dip)
     pending_confirmed_sell_level := f_sell_signal_level(confirmed_euphoria_sell, confirmed_strong_sell, confirmed_sell_hedge)
     pending_confirmed_structure_day := confirmed_structure_day_id
-    pending_confirmed_score := score
-    pending_confirmed_z := z
-    pending_confirmed_vix := vix
-    pending_confirmed_skew := skew
-    pending_confirmed_vix_regime_txt := vix_regime_txt
-    pending_confirmed_trend_status_txt := trend_status_txt
-    last_confirmed_structure_score := score
+    pending_confirmed_score := confirmed_feed_score
+    pending_confirmed_z := confirmed_feed_z
+    pending_confirmed_vix := confirmed_feed_vix
+    pending_confirmed_skew := confirmed_feed_skew
+    pending_confirmed_vix_regime_txt := confirmed_feed_vix_regime_txt
+    pending_confirmed_trend_status_txt := confirmed_feed_trend_txt
+    last_confirmed_structure_score := confirmed_feed_score
 
 is_alert_preview_mode = alert_timing_mode == "Preview / Earliest Possible"
 is_regular_session_only = after_hours_alert_policy == "Regular Session Only"
@@ -919,7 +977,8 @@ if barstate.isnew
         sell_day_latch_id := 0
 
 // VIX Regime 自适应冷却：高波动减半，低波动加倍
-adaptive_cooldown = vix_regime == 3 ? math.round(alert_cooldown_base / 2) : vix_regime == 1 ? alert_cooldown_base * 2 : alert_cooldown_base
+// v7.13 (M3): math.max 防止 base=1 时整除截断得 0 / Guard: int division truncates, base=1 must not yield 0 cooldown
+adaptive_cooldown = vix_regime == 3 ? math.max(1, math.round(alert_cooldown_base / 2)) : vix_regime == 1 ? alert_cooldown_base * 2 : alert_cooldown_base
 
 if enable_smart_alert
     // ===== 买入信号聚合 =====

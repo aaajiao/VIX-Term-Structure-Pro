@@ -1,4 +1,4 @@
-# VIX Term Structure Pro v7.12
+# VIX Term Structure Pro v7.13
 
 [![TradingView](https://img.shields.io/badge/TradingView-Indicator-blue?logo=tradingview)](https://www.tradingview.com/scripts/)
 [![Pine Script](https://img.shields.io/badge/Pine%20Script-v6-brightgreen)](https://www.tradingview.com/pine-script-reference/v6/)
@@ -20,7 +20,7 @@ Current script:
 
 - Main file: `vix.pine`
 - Pine version: `//@version=6`
-- Indicator title: `VIX Term Structure Pro [v7.12]`
+- Indicator title: `VIX Term Structure Pro [v7.13]`
 - Historical execution window: `calc_bars_count=5000`
 - Primary use case: SPY / QQQ / IWM / index charts on TradingView
 
@@ -168,8 +168,8 @@ This default means:
 
 If `VIX Timeframe = Chart` in preview mode:
 
-- only VIX follows the chart timeframe
-- other structure inputs can still remain daily
+- only the VIX display, the live VIX regime gates, the adaptive trend-MA length selection (and thus the live trend filter), and the adaptive alert cooldown follow the chart timeframe
+- the score and its structure inputs are always evaluated on daily data (since v7.13)
 - dashboard label `PREVIEW*` means this hybrid mode is active
 
 ### After-Hours Policy
@@ -202,10 +202,10 @@ TradingView alerts run from a server-side snapshot of the script and its inputs.
 ### Alert Message Format
 
 ```text
-Symbol: [Side] [Timing] [Level][Upgrade] -> [Triggered Labels] | [Context]
+Symbol: [Side] [Timing] [Level][Upgrade] → [Triggered Labels] | [Context] [Trend] | [Mode]
 
-SPY: 🟢 BUY [CONFIRMED] [Lv2] -> 🟢STRONG | Score:5.2 Z:-2.1 VIX:19(NORM) | Confirmed
-QQQ: 🟢 BUY [PREVIEW] [Lv1] -> 🟡DIP | Score:4.0 Z:-1.8 VIX:28(HIGH) | Hybrid preview daily+chart
+SPY: 🟢 BUY [CONFIRMED] [Lv2] → 🟢STRONG | Score:5.2 Z:-2.1 VIX:19(NORM) 🟢SPX 🟢NDX 🔴RUT | Confirmed
+QQQ: 🟢 BUY [PREVIEW] [Lv1] → 🟡DIP | Score:4.0 Z:-1.8 VIX:28(HIGH) 🟢SPX 🟢NDX 🔴RUT | Hybrid preview hybrid daily+chart
 ```
 
 Alert state machine behavior:
@@ -218,6 +218,7 @@ Alert state machine behavior:
 - rollback-safe `varip` state keeps side-latch/cooldown/send bookkeeping stable across realtime-bar updates
 - confirmed-mode snapshot and single emit per structure day
 - adaptive cooldown measured in chart bars for preview mode
+- signals blocked by cooldown or session policy are discarded, never deferred or re-sent
 
 ## Dashboard and Plotting
 
@@ -291,6 +292,7 @@ The script can display:
 - VIX regime thresholds
 - adaptive percentile thresholds
 - adaptive Z-score lookbacks
+- vol regime hysteresis band for Z lookback switching
 - SKEW mode
 - volume average length
 - optional VVIX thresholds
@@ -340,6 +342,15 @@ Validation must be done in TradingView:
 8. On an intraday ETF chart, verify `Confirmed Daily Structure` emits at most once for the same completed structure day and does not repeat across after-hours `1m` bars.
 9. In preview mode, verify `Regular Session Only` still blocks after-hours alerts on extended-hours `1m` bars.
 10. In preview mode with `Allow if source confirms` on extended-hours `1m`, verify same-side same-level alerts do not repeat within one chart day; only `Lv1 -> Lv2 -> Lv3` upgrades can emit again.
+11. On a crypto `1D` chart and a recently listed ticker's `1D` chart, verify score/Z render sensibly (v7.13 sources them from the SPX daily grid; values intentionally differ from v7.12 there).
+
+## What's New in v7.13
+
+- **Timeframe-independent score**: `Score` and its gating factors (Z-Score, momentum, core confirmations, weekly MTF alignment) are now evaluated in the `SP:SPX` daily context through a `request.security()` tuple. Intraday charts read the same daily values as a `1D` chart. With `Trading Safe Mode = ON`, historical bars use completed trading days and the realtime bar tracks the developing day; with safe mode OFF, historical intraday bars show same-day final values (repaint semantics as in v7.12; the values themselves are now daily-context). Charts above `1D` sample one daily value per chart bar. Note that `1D` charts off the US trading calendar and recently listed tickers now read SPX-grid values that differ from v7.12 — see Known Limitations.
+- **Consistent confirmed-alert anchor**: on intraday charts, the confirmed structure-day id and the full confirmed snapshot (score, Z, VIX, SKEW, regime, trend, momentum and core gates — including the trend-filter gate on `BUY DIP`) now come from a dedicated completed-structure-day source using a per-element `[1]` offset with hardcoded `lookahead_on`. Live and historical bars see identical completed-day data, and in the default configuration the confirmed path no longer depends on the `Trading Safe Mode` toggle (see Known Limitations for the weekly-MTF and 24-hour-symbol caveats). `1D` and higher charts keep the previous same-bar-close behavior.
+- **Adaptive Z lookback hysteresis**: new `Vol Regime Hysteresis Band` input (Advanced group, default `0.0` = v7.12 behavior, suggested experiment value `2.0`). VIX must rise above `threshold + band` to switch to the high-vol lookback and fall back to `threshold - band` or below to switch back, preventing lookback flip-flop when VIX hovers near the threshold.
+- **Cooldown semantics clarified**: signals blocked by the alert cooldown or session policy are discarded, never deferred or re-sent later. The halved high-vol cooldown is now floored at `1` bar, so `Alert Cooldown Base = 1` can no longer truncate to a zero cooldown.
+- **Dead code cleanup**: removed the unused `spx_day_id` request and the legacy `lookahead_off` confirmed anchor; the structure-day id is now a single shared expression reused by the daily-context requests and the chart-day id.
 
 ## Current Highlights
 
@@ -348,16 +359,23 @@ Validation must be done in TradingView:
 - exact `1D` charts include rolling buy-side and sell-side statistics
 - sell plots, alerts, and stats all use the final filtered sell signals
 - confirmed alerts now snapshot one structure day and emit once during the next regular session
+- the score and its gates are evaluated in the `SP:SPX` daily context, so intraday charts match `1D` score semantics
+- confirmed alerts consume a completed-structure-day snapshot that is identical on live and historical bars
 - `Regular Session Only` still keys off the exchange regular session for preview alerts
 - preview alerts now latch same-side same-level sends per chart day and only re-emit on strict upgrades
 
-## Limitations
+## Known Limitations
 
 - Pine can only be truly validated on TradingView.
 - External daily sources may update later than the chart close.
-- `VIX Timeframe = Chart` does not make the whole model intraday; it only changes the VIX leg.
+- `VIX Timeframe = Chart` does not make the whole model intraday; since v7.13 it only affects the dashboard VIX display, the live VIX regime gates, the adaptive trend-MA length selection (and thus the live trend filter), and the adaptive alert cooldown — the score itself is always computed on daily structure data.
+- The score is evaluated on the `SP:SPX` daily grid. On `1D` charts off the US trading calendar (crypto, forex) the rolling windows no longer include weekend bars, and on recently listed tickers the warmup comes from decades of SPX history, so those charts read different (intentionally improved) score values than v7.12.
+- Confirmed-path independence from `Trading Safe Mode` holds for the default configuration. With `Use Weekly MTF Confirmation` enabled, the weekly MTF leg samples its daily inputs inside a weekly context, so the toggle still changes which day of the completed week is sampled (ON = last daily bar / Friday, OFF = first / Monday) and can shift the confirmed score by ±1 — keep Safe Mode ON. It also assumes the VIX / Put-Call / manual-trend symbols follow the US equity trading calendar; 24-hour-calendar custom symbols shift the confirmed snapshot by one day between toggle states.
 - Statistics are rolling and reference-index based, not a full broker-grade backtest.
 - Win-rate statistics are intentionally `1D`-only.
+- `CBOE:VX1!` / `CBOE:VX2!` are continuous futures that switch contracts on roll dates; term structure readings (contango, basis, Z-Score) can spike artificially around the roll.
+- `Regular Session Only` is ineffective on futures and other 24-hour symbols: `session.ismarket` is always `true` there, so nothing is blocked. Use it on equity / ETF charts with a defined regular session.
+- Index auto-detect matches substrings of the chart ticker (`QQQ` / `NDX` / `NQ`, `IWM` / `RUT` / `RTY`), so unusual tickers containing those substrings can be routed to the wrong reference index.
 
 ## License
 
