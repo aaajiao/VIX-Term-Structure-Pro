@@ -24,3 +24,7 @@ Icon?
 # OpenCode session data
 .claude/
 .opencode/
+
+# Local Python regression checks
+__pycache__/
+*.py[cod]

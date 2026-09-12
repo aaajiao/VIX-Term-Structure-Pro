@@ -1,16 +1,16 @@
 //@version=6
 // calc_bars_count uses a fixed 5000-bar execution window to stay within Pine's common historical buffer.
-indicator("VIX Term Structure Pro [v7.13]", overlay=false, max_lines_count=500, calc_bars_count=5000)
+indicator("VIX Term Structure Pro [v7.14]", overlay=false, calc_bars_count=5000)
 
 // ╔════════════════════════════════════════════════════════════════════════════╗
-// ║                    VIX Term Structure Pro v7.13 使用指南                     ║
+// ║                    VIX Term Structure Pro v7.14 使用指南                     ║
 // ╠════════════════════════════════════════════════════════════════════════════╣
 // ║ 📊 仪表盘指标解读                                                           ║
 // ║----------------------------------------------------------------------------║
 // ║ 指标           │ 看涨信号 🟢              │ 看跌信号 🔴                     ║
 // ║----------------------------------------------------------------------------║
 // ║ Overall Bias   │ STRONG BUY / BUY DIP    │ STRONG SELL / SELL/HEDGE       ║
-// ║ AI Score       │ ≥ 5 (极度恐慌)           │ ≤ -5 (极度贪婪)                 ║
+// ║ Score          │ ≥ 5 (极度恐慌)           │ ≤ -5 (极度贪婪)                 ║
 // ║ Market Trend   │ 🟢SPX 🟢NDX 🟢RUT       │ 🔴SPX 🔴NDX 🔴RUT               ║
 // ║ VIX Regime     │ LOW VOL (<15)           │ HIGH VOL (>25)                 ║
 // ║ Term Struct Z  │ < -2.0 (恐慌)           │ > 2.0 (贪婪)                    ║
@@ -26,7 +26,7 @@ indicator("VIX Term Structure Pro [v7.13]", overlay=false, max_lines_count=500, 
 // ║----------------------------------------------------------------------------║
 // ║ 🎨 全新仪表盘    │ Mobile/Full 双模式，深色主题，分组布局                    ║
 // ║ 📊 进度条显示    │ Score 可视化进度条 (█░)                                  ║
-// ║ 🛡️ 实盘安全模式  │ 默认开启，无重绘 (lookahead_off)                         ║
+// ║ 🛡️ 实盘安全模式  │ 禁止历史未来数据；实时值仍会变化 No future leak          ║
 // ║ ⬆️ 跨K线升级报警  │ 信号等级升级时触发新警报 (DIP→STRONG→CRASH)              ║
 // ╚════════════════════════════════════════════════════════════════════════════╝
 
@@ -49,6 +49,38 @@ calc_pcr_points(is_panic, is_calm) =>
 calc_vvix_points(is_panic, is_calm, use_vvix) =>
     not use_vvix ? 0 : is_panic ? 1 : is_calm ? -1 : 0
 
+// Shared setup gates for the panel, chart signals and confirmed alerts.
+// 面板、图表信号与确认提醒共用条件；冷却只作用于事件，不改变当前市场状态。
+// reason: 0=ready/neutral, 1=data, 2=vol, 3=momentum, 4=Z, 5=core, 6=trend data, 7=bear trend.
+f_signal_setup(s, ready, regime, mom_buy, mom_sell, z_val, mid, min_buy, core_buy, core_sell, strict_sell, filter_trend, trend_ready, trend_bull) =>
+    int buy_level = 0
+    int sell_level = 0
+    int reason = 0
+    if not ready or na(s)
+        reason := 1
+    else if s >= 6
+        buy_level := 3
+    else if s >= 5
+        buy_level := 2
+    else if s >= min_buy
+        reason := regime == 3 ? 2 : not mom_buy ? 3 : not (z_val < -mid) ? 4 : not core_buy ? 5 : filter_trend and not trend_ready ? 6 : filter_trend and not trend_bull ? 7 : 0
+        buy_level := reason == 0 ? 1 : 0
+    else if s <= -6
+        sell_level := 3
+    else if s <= -5
+        reason := strict_sell and not core_sell ? 5 : 0
+        sell_level := reason == 0 ? 2 : 0
+    else if s <= -2
+        reason := regime == 1 ? 2 : not mom_sell ? 3 : strict_sell and not core_sell ? 5 : 0
+        sell_level := reason == 0 ? 1 : 0
+    [buy_level, sell_level, reason]
+
+f_buy_transition(s, prev, min_buy) =>
+    na(s) or na(prev) ? 0 : s >= 6 and prev < 6 ? 3 : s >= 5 and s < 6 and prev < 5 ? 2 : s >= min_buy and s < 5 and prev < min_buy ? 1 : 0
+
+f_sell_transition(s, prev) =>
+    na(s) or na(prev) ? 0 : s <= -6 and prev > -6 ? 3 : s <= -5 and s > -6 and prev > -5 ? 2 : s <= -2 and s > -5 and prev > -2 ? 1 : 0
+
 // ========== v7.8: 进度条生成函数 ==========
 // 生成 Score 进度条 (-10 到 +10 范围，10格)
 f_score_bar(score_val) =>
@@ -57,10 +89,10 @@ f_score_bar(score_val) =>
     string bar = ""
     for i = 0 to 9
         bar := bar + (i < filled ? "█" : "░")
-    bar
+    na(score_val) ? "—" : bar
 
 f_stats_cell(icon, evaluated_count, win_rate, avg_return, ready) =>
-    ready ? icon + str.tostring(evaluated_count) + " W" + str.tostring(win_rate, "#") + "% " + str.tostring(avg_return, "+#.#;-#.#") + "%" : icon + "N/A"
+    ready and evaluated_count > 0 ? icon + str.tostring(evaluated_count) + " W" + str.tostring(win_rate, "#") + "% " + str.tostring(avg_return, "+#.#;-#.#") + "%" : icon + "N/A"
 
 // ========== KAMA 自定义实现 (Kaufman Adaptive Moving Average) ==========
 // 由于 ta.kama() 在某些环境不可用，手动实现
@@ -84,7 +116,7 @@ calc_kama(src, length, fastLen, slowLen) =>
 // 📡 数据源设置 (Data Sources)
 // ────────────────────────────────────────────────────────────────────────────
 grp_data = "📡 Data Sources"
-trading_safe_mode = input.bool(true, "🛡️ Trading Safe Mode (Recommended)", group=grp_data, tooltip="ON: 实盘安全模式 Trading-safe\n    • 信号无重绘 Signals no repaint\n    • 面板VIX实时显示(ʳᵗ) Dashboard VIX real-time\nOFF: 预览模式 Preview mode\n    • 历史可能重绘 History may repaint")
+trading_safe_mode = input.bool(true, "🛡️ Trading Safe Mode (Recommended)", group=grp_data, tooltip="ON: No future daily values on historical bars 历史K线不提前读取当日最终值\nDeveloping daily values can still change/repaint 实时日线值仍可能变化或重绘\nEnable Confirmed Signals Only for completed-day intraday signals 开启确认信号可在盘中使用已完成日线\nOFF: Historical preview can leak future values 历史预览可能包含未来数据")
 
 sym_vix_input = input.symbol("CBOE:VIX", "VIX Symbol", group=grp_data, tooltip="VIX数据源 VIX data source\n默认 Default: CBOE:VIX")
 vix_timeframe = input.string("Daily", "VIX Timeframe", options=["Daily", "Chart"], group=grp_data, tooltip="Daily: 日线结构源 daily structure source (稳定 stable)\nChart: VIX显示/波动区间门控/自适应趋势均线选择(实时趋势过滤)/自适应冷却跟随图表周期 VIX display, regime gating, adaptive trend-MA selection (live trend filter) and adaptive cooldown follow the chart timeframe\nv7.13起评分始终基于日线结构计算 Since v7.13 Score is always computed on daily structure data")
@@ -111,12 +143,12 @@ kama_length = input.int(21, "└─ KAMA Length", minval=5, maxval=50, group=grp
 // 🎯 信号确认 (Signal Confirmation)
 // ────────────────────────────────────────────────────────────────────────────
 grp_confirm = "🎯 Signal Confirmation"
-use_confirmed_signals = input.bool(false, "🔒 Confirmed Signals Only", group=grp_confirm, tooltip="ON: 图表信号按当前K线收盘确认 Confirm displayed signals on bar close\nOFF: 图表信号实时更新 Update displayed signals intrabar\n此项不定义智能提醒时序 Smart Alert timing uses its own mode")
+use_confirmed_signals = input.bool(false, "🔒 Confirmed Signals Only", group=grp_confirm, tooltip="ON: Intraday chart signals/Score use the previous completed structure day 盘中信号与评分使用上一完整结构日\nOn 1D and higher, signals wait for chart close 日线及以上信号等待图表收盘\nOFF: Developing daily signals, may repaint 发展中的日线信号，可能重绘\nSmart Alert timing remains separately selected 智能提醒时序单独选择\nKeep Trading Safe Mode ON with weekly MTF 使用周线MTF时请保持安全模式开启")
 use_momentum_confirm = input.bool(true, "Use Momentum Confirmation", group=grp_confirm, tooltip="启用动量确认 Enable momentum confirmation\n需要Z-Score有方向性变化 Require Z-Score direction")
 momentum_bars = input.int(3, "Momentum Lookback Bars", minval=1, maxval=10, group=grp_confirm, tooltip="动量计算周期 Momentum lookback period")
 z_momentum_neutral_zone = input.float(0.05, "Z Momentum Neutral Zone", minval=0.01, maxval=0.2, step=0.01, group=grp_confirm, tooltip="Z动量中性区 Z momentum neutral zone\n过滤噪音 Filter noise")
 use_mtf_confirm = input.bool(false, "Use Weekly MTF Confirmation", group=grp_confirm, tooltip="周线确认 Weekly confirmation\n需要周线Z方向一致 Require weekly Z alignment")
-signal_display_cooldown = input.int(5, "Signal Display Cooldown (Bars)", minval=1, maxval=20, group=grp_confirm, tooltip="信号冷却间隔 Signal cooldown (bars)\n避免同类信号频繁触发 Prevent frequent triggers")
+signal_display_cooldown = input.int(5, "Signal Display Cooldown (Bars)", minval=1, maxval=20, group=grp_confirm, tooltip="Chart/Preview DIP and HEDGE cooldown in chart bars 图表与预览DIP/HEDGE的图表K线冷却\nOnly final events consume it 仅最终信号消耗\nConfirmed Smart Alerts use independent daily snapshots 确认智能提醒使用独立日线快照")
 
 // ────────────────────────────────────────────────────────────────────────────
 // 🎨 图表样式 (Chart Style)
@@ -141,18 +173,17 @@ table_size  = input.string("Normal", "Dashboard Text Size", options=["Small", "N
 // 📊 统计与警报 (Statistics & Alerts)
 // ────────────────────────────────────────────────────────────────────────────
 grp_stats = "📊 Statistics & Alerts"
-show_signal_stats = input.bool(true, "Show Signal Statistics", group=grp_stats, tooltip="显示信号统计 Show signal statistics\n仅 1D 图表显示胜率和收益 Win-rate stats only show on 1D charts")
+show_signal_stats = input.bool(true, "Show Signal Statistics", group=grp_stats, tooltip="显示信号统计 Show signal statistics\nUS 1D stocks/funds/indices only 仅纽约时区股票、基金、指数的1D图表显示统计")
 // 19*252 + 60 = 4848, which stays within the 5000-bar execution / buffer budget. 20Y would exceed it.
 stats_lookback_years = input.int(3, "Stats Lookback (Years)", minval=1, maxval=19, group=grp_stats, tooltip="统计回溯年数 Stats lookback years\n仅统计此范围内信号 Only count signals within range\n上限19年以避免超过5000 bars 19Y max keeps stats inside 5000 bars")
 crash_return_bars = input.int(40, "🚨 CRASH Return Period (Bars)", minval=10, maxval=60, group=grp_stats, tooltip="CRASH信号收益周期 CRASH return period\n约2个月 ~2 months")
 strong_return_bars = input.int(20, "🟢 STRONG Return Period (Bars)", minval=10, maxval=40, group=grp_stats, tooltip="STRONG信号收益周期 STRONG return period\n约1个月 ~1 month")
 dip_return_bars = input.int(10, "🟡 DIP Return Period (Bars)", minval=5, maxval=20, group=grp_stats, tooltip="DIP信号收益周期 DIP return period\n约2周 ~2 weeks")
 enable_smart_alert = input.bool(true, "🔔 Smart Alert", group=grp_stats, tooltip="启用智能警报 Enable Smart Alert\n单条消息汇总所有信号 Aggregated signal message")
-alert_timing_mode = input.string("Confirmed Daily Structure", "└─ Alert Timing Mode", options=["Confirmed Daily Structure", "Preview / Earliest Possible"], group=grp_stats, tooltip="Confirmed Daily Structure: 严格使用已完成的上一结构日 Strict previous completed structure day\n盘中只在下一次常规时段发出一次 confirmed Confirmed emits once on the next regular session\nPreview / Earliest Possible: 尽早预览 Hybrid preview\n可能仍受日线结构源更新时间影响 May still depend on delayed daily source updates")
+alert_timing_mode = input.string("Confirmed Daily Structure", "└─ Alert Timing Mode", options=["Confirmed Daily Structure", "Preview / Earliest Possible"], group=grp_stats, tooltip="Confirmed Daily Structure: Intraday: previous completed structure day, first regular session 盘中：上一完整结构日，首个常规时段发送\n1D+: chart-close confirmation 日线及以上：图表收盘确认\nPreview / Earliest Possible: 尽早预览 Hybrid preview\n可能仍受日线结构源更新时间影响 May still depend on delayed daily source updates")
 after_hours_alert_policy = input.string("Allow if source confirms", "└─ After-Hours Alert Policy", options=["Allow if source confirms", "Regular Session Only"], group=grp_stats, tooltip="Preview 模式使用 Used by Preview mode\nAllow if source confirms: 允许盘后预览提醒 Allow preview alerts after close\nRegular Session Only: 使用交易所常规时段，常规时段外不提醒 Use exchange-defined regular market hours; block alerts outside the regular session")
-alert_cooldown_base = input.int(5, "Alert Cooldown Base (Bars)", minval=1, maxval=20, group=grp_stats, tooltip="基础冷却间隔 Base cooldown (bars)\n高波动期减半、低波动期加倍 Halved in high vol, doubled in low vol\n注意: 被冷却或时段策略拦截的信号会被直接丢弃, 不会延后补发 Note: signals blocked by cooldown or session policy are DISCARDED, never deferred or re-sent")
+alert_cooldown_base = input.int(5, "Alert Cooldown Base (Bars)", minval=1, maxval=20, group=grp_stats, tooltip="Preview alerts only, in chart bars 仅预览提醒，按图表K线计数\n高波动期减半、低波动期加倍 Halved in high vol, doubled in low vol\n注意: 被冷却或时段策略拦截的信号会被直接丢弃, 不会延后补发 Note: signals blocked by cooldown or session policy are DISCARDED, never deferred or re-sent")
 alert_freq_mode = input.string("Real-time", "└─ Alert Frequency", options=["Once Per Bar", "Real-time"], group=grp_stats, tooltip="Once Per Bar: 每K线最多一次 Max once per bar\nReal-time: 实时触发 Trigger on every condition")
-alert_freq = alert_freq_mode == "Real-time" ? alert.freq_all : alert.freq_once_per_bar
 
 // ────────────────────────────────────────────────────────────────────────────
 // ⚙️ 高级设置 (Advanced Settings)
@@ -169,17 +200,17 @@ adapt_lookback = input.int(252, "Adaptive Lookback Period", minval=50, maxval=50
 
 // Z-Score 计算
 use_adaptive = input.bool(true, "Use Adaptive Lookback (Z-Score)", group=grp_advanced, tooltip="Z-Score自适应回溯 Adaptive Z lookback\n高波动期用短周期 Shorter in high vol")
-len_low      = input.int(252, "Lookback (Low Vol)", minval=50, group=grp_advanced, tooltip="低波动回溯 Low vol lookback\n252=1年 1 year")
-len_high     = input.int(126, "Lookback (High Vol)", minval=20, group=grp_advanced, tooltip="高波动回溯 High vol lookback\n126=半年 6 months")
+len_low      = input.int(252, "Lookback (Low Vol)", minval=50, maxval=5000, group=grp_advanced, tooltip="低波动回溯 Low vol lookback\n252=1年 1 year\nMaximum 5000 bars 上限5000根")
+len_high     = input.int(126, "Lookback (High Vol)", minval=20, maxval=5000, group=grp_advanced, tooltip="高波动回溯 High vol lookback\n126=半年 6 months\nMaximum 5000 bars 上限5000根")
 vol_thresh   = input.float(20.0, "Vol Regime Threshold", minval=10, group=grp_advanced, tooltip="波动区间阈值 Vol regime threshold\nVIX高于此值=高波动期 Above=high vol")
 vol_hysteresis = input.float(0.0, "└─ Vol Regime Hysteresis Band", minval=0.0, maxval=10.0, step=0.5, group=grp_advanced, tooltip="波动切换滞回带 Hysteresis band for Z lookback switching\nVIX高于 阈值+带宽 才切到高波动回溯, 回到 阈值-带宽 及以下才切回 Switch to high-vol lookback only above threshold+band, switch back only at or below threshold-band\n0 = 即时切换 (默认, 与 v7.12 行为一致) 0 = instant switching (default, matches v7.12)\n建议试验值 Suggested value to try: 2.0")
 
 // SKEW 设置
 skew_mode    = input.string("Relative (Z-Score)", "SKEW Logic Mode", options=["Relative (Z-Score)", "Percentile (Adaptive)", "Absolute (>140)"], group=grp_advanced, tooltip="SKEW判断模式 SKEW logic mode\nZ-Score: 相对标准差 / Percentile: 百分位 / Absolute: 固定值")
-skew_len     = input.int(126, "SKEW Lookback Period", minval=20, group=grp_advanced, tooltip="SKEW回溯周期 SKEW lookback\n126=半年 6 months")
+skew_len     = input.int(126, "SKEW Lookback Period", minval=20, maxval=5000, group=grp_advanced, tooltip="SKEW回溯周期 SKEW lookback\n126=半年 6 months\nAbsolute legacy mode uses >145 / <110 固定旧版模式使用>145 / <110")
 
 // 成交量设置
-vol_avg_len  = input.int(20, "Volume Avg Length", minval=5, group=grp_advanced, tooltip="成交量均线长度 Volume MA length")
+vol_avg_len  = input.int(20, "Volume Avg Length", minval=5, maxval=5000, group=grp_advanced, tooltip="成交量均线长度 Daily volume MA length 日线均量周期")
 
 // ────────────────────────────────────────────────────────────────────────────
 // 📈 VVIX 设置 (Optional)
@@ -203,12 +234,10 @@ t_size = table_size == "Small" ? size.small : table_size == "Large" ? size.large
 is_mobile = panel_mode == "Mobile"
 
 // ========== 2. 数据获取 ==========
-// v7.9: Trading Safe Mode 默认开启，使用 lookahead_off 避免重绘
-// Trading Safe Mode ON (默认): 信号无重绘，面板VIX实时显示
-// Trading Safe Mode OFF: 盘中实时预览，但历史可能重绘
+// Safe Mode avoids future leaks; developing HTF values can still repaint after reload.
+// 安全模式避免历史未来数据；发展中的高周期值仍可能在重载后变化。
 vix_tf = vix_timeframe == "Daily" ? "D" : ""
-is_no_repaint_mode = trading_safe_mode
-lookahead_setting = is_no_repaint_mode ? barmerge.lookahead_off : barmerge.lookahead_on
+lookahead_setting = trading_safe_mode ? barmerge.lookahead_off : barmerge.lookahead_on
 
 vix     = request.security(sym_vix_input, vix_tf, close, lookahead=lookahead_setting, ignore_invalid_symbol=true)
 
@@ -229,18 +258,16 @@ pcr     = request.security(sym_pcr_input, "D", close, lookahead=lookahead_settin
 // VVIX 数据 (可选)
 vvix = use_vvix ? request.security("CBOE:VVIX", "D", close, lookahead=lookahead_setting, ignore_invalid_symbol=true) : na
 
-// 自动检测逻辑：如果图表是 QQQ/NQ/NDX 相关，用 NDX；如果是 IWM/RUT/RTY 相关，用 RUT；否则用 SPX
-is_nasdaq_chart = str.contains(str.upper(syminfo.ticker), "QQQ") or 
-                  str.contains(str.upper(syminfo.ticker), "NDX") or 
-                  str.contains(str.upper(syminfo.ticker), "NQ")
-is_russell_chart = str.contains(str.upper(syminfo.ticker), "IWM") or 
-                   str.contains(str.upper(syminfo.ticker), "RUT") or 
-                   str.contains(str.upper(syminfo.ticker), "RTY")
+// Exact ETF/index families and futures roots avoid routing CNQ to NDX.
+// 明确匹配ETF/指数家族与期货根代码，避免把CNQ误识别为纳斯达克。
+chart_ticker = str.upper(syminfo.ticker)
+chart_root = str.upper(syminfo.root)
+is_nasdaq_chart = chart_ticker == "QQQ" or chart_ticker == "QQQM" or chart_ticker == "TQQQ" or chart_ticker == "SQQQ" or chart_ticker == "QLD" or chart_ticker == "QID" or chart_ticker == "NDX" or (syminfo.type == "futures" and (chart_root == "NQ" or chart_root == "MNQ"))
+is_russell_chart = chart_ticker == "IWM" or chart_ticker == "UWM" or chart_ticker == "TWM" or chart_ticker == "TNA" or chart_ticker == "TZA" or chart_ticker == "RUT" or (syminfo.type == "futures" and (chart_root == "RTY" or chart_root == "M2K"))
 
 // ========== 2.1 自适应趋势均线计算 (v7.1 新增, v7.7 统一 lookahead) ==========
 // 根据 VIX 水平确定自适应均线长度
 is_high_vol_regime = not na(vix) and vix > vol_thresh
-adaptive_ma_len = is_high_vol_regime ? trend_ma_length_high : trend_ma_length_low
 
 // v7.7: 趋势均线也统一使用 lookahead_setting，确保回测/实盘模式一致
 // v7.13: 每个指数的收盘价+全部趋势均线合并为单次 tuple 请求（原 5 个调用 → 1 个），
@@ -253,9 +280,10 @@ f_trend_pack(string ma_type, int len_low, int len_high, int kama_len) =>
     ma_ema_fixed = ta.ema(close, len_low)
     ma_adapt_high = ta.sma(close, len_high)
     ma_adapt_low = ta.sma(close, len_low)
-    ma_fixed = ma_type == "EMA" ? ma_ema_fixed : ma_adapt_low
+    ma_fixed = not na(close[len_low - 1]) ? (ma_type == "EMA" ? ma_ema_fixed : ma_adapt_low) : na
     ma_kama = calc_kama(close, kama_len, 2, 30)
-    [close, ma_fixed, ma_adapt_high, ma_adapt_low, ma_kama]
+    ma_kama_ready = not na(close[kama_len]) ? ma_kama : na
+    [close, ma_fixed, ma_adapt_high, ma_adapt_low, ma_kama_ready]
 
 [spx_close, spx_ma_fixed, spx_ma_adapt_high, spx_ma_adapt_low, spx_ma_kama] = request.security("SP:SPX", "D", f_trend_pack(trend_ma_type, trend_ma_length_low, trend_ma_length_high, kama_length), lookahead=lookahead_setting, ignore_invalid_symbol=true)
 [ndx_close, ndx_ma_fixed, ndx_ma_adapt_high, ndx_ma_adapt_low, ndx_ma_kama] = request.security("NASDAQ:NDX", "D", f_trend_pack(trend_ma_type, trend_ma_length_low, trend_ma_length_high, kama_length), lookahead=lookahead_setting, ignore_invalid_symbol=true)
@@ -268,47 +296,47 @@ ndx_trend_ma = trend_ma_mode == "KAMA" ? ndx_ma_kama : trend_ma_mode == "Adaptiv
 rut_trend_ma = trend_ma_mode == "KAMA" ? rut_ma_kama : trend_ma_mode == "Adaptive" ? (is_high_vol_regime ? rut_ma_adapt_high : rut_ma_adapt_low) : rut_ma_fixed
 manual_trend_ma = trend_ma_mode == "KAMA" ? manual_ma_kama : trend_ma_mode == "Adaptive" ? (is_high_vol_regime ? manual_ma_adapt_high : manual_ma_adapt_low) : manual_ma_fixed
 
-valid_data = not na(vix) and not na(vx1) and not na(vx2)
+valid_data = not na(vix) and vix > 0 and not na(vx1) and vx1 > 0 and not na(vx2) and vx2 > 0
 
 // ========== 3. 核心计算 ==========
 // SPX 趋势判断（使用自适应趋势均线）
-is_spx_bull = not na(spx_close) and not na(spx_trend_ma) ? (spx_close > spx_trend_ma) : true
+is_spx_trend_ready = not na(spx_close) and spx_close > 0 and not na(spx_trend_ma) and (trend_ma_mode != "Adaptive" or not na(vix))
+is_spx_bull = is_spx_trend_ready and spx_close > spx_trend_ma
 // NDX 趋势判断
-is_ndx_bull = not na(ndx_close) and not na(ndx_trend_ma) ? (ndx_close > ndx_trend_ma) : true
+is_ndx_trend_ready = not na(ndx_close) and ndx_close > 0 and not na(ndx_trend_ma) and (trend_ma_mode != "Adaptive" or not na(vix))
+is_ndx_bull = is_ndx_trend_ready and ndx_close > ndx_trend_ma
 // RUT 趋势判断
-is_rut_bull = not na(rut_close) and not na(rut_trend_ma) ? (rut_close > rut_trend_ma) : true
+is_rut_trend_ready = not na(rut_close) and rut_close > 0 and not na(rut_trend_ma) and (trend_ma_mode != "Adaptive" or not na(vix))
+is_rut_bull = is_rut_trend_ready and rut_close > rut_trend_ma
 // 手动趋势源判断（v7.13: 拆为独立变量，供 confirmed 快照 tuple 复用 standalone manual trend gate, reused by the confirmed snapshot tuple）
-is_manual_bull = not na(manual_close) and not na(manual_trend_ma) ? (manual_close > manual_trend_ma) : true
+is_manual_trend_ready = not na(manual_close) and manual_close > 0 and not na(manual_trend_ma) and (trend_ma_mode != "Adaptive" or not na(vix))
+is_manual_bull = is_manual_trend_ready and manual_close > manual_trend_ma
 
 // 主趋势判断（用于评分系统的过滤）
 is_auto_bull = is_russell_chart ? is_rut_bull : is_nasdaq_chart ? is_ndx_bull : is_spx_bull
 is_primary_bull = auto_detect_index ? is_auto_bull : is_manual_bull
+is_auto_trend_ready = is_russell_chart ? is_rut_trend_ready : is_nasdaq_chart ? is_ndx_trend_ready : is_spx_trend_ready
+is_primary_trend_ready = auto_detect_index ? is_auto_trend_ready : is_manual_trend_ready
 
 // 趋势状态文本（三指数合并显示）
-spx_emoji = is_spx_bull ? "🟢" : "🔴"
-ndx_emoji = is_ndx_bull ? "🟢" : "🔴"
-rut_emoji = is_rut_bull ? "🟢" : "🔴"
+spx_emoji = not is_spx_trend_ready ? "⚪" : is_spx_bull ? "🟢" : "🔴"
+ndx_emoji = not is_ndx_trend_ready ? "⚪" : is_ndx_bull ? "🟢" : "🔴"
+rut_emoji = not is_rut_trend_ready ? "⚪" : is_rut_bull ? "🟢" : "🔴"
 trend_status_txt = spx_emoji + "SPX " + ndx_emoji + "NDX " + rut_emoji + "RUT"
-trend_color = is_spx_bull and is_ndx_bull and is_rut_bull ? color.green : 
-              not is_spx_bull and not is_ndx_bull and not is_rut_bull ? color.red : color.orange
-
-// 用于评分的 is_bull_market（使用主趋势）
-is_bull_market = is_primary_bull
 
 // VIX Regime 判断
-vix_regime = vix < vix_low_thresh ? 1 : vix > vix_high_thresh ? 3 : 2
-vix_regime_txt = vix_regime == 1 ? "LOW" : vix_regime == 3 ? "HIGH" : "NORM"
-vix_regime_color = vix_regime == 1 ? color.lime : vix_regime == 3 ? color.red : color.silver
-vix_regime_emoji = vix_regime == 1 ? "🟢" : vix_regime == 3 ? "🔴" : "⚪"
+vix_regime = na(vix) or vix <= 0 ? 0 : vix < vix_low_thresh ? 1 : vix > vix_high_thresh ? 3 : 2
+vix_regime_txt = vix_regime == 0 ? "N/A" : vix_regime == 1 ? "LOW" : vix_regime == 3 ? "HIGH" : "NORM"
 
-term_spread = valid_data ? (vx2 - vx1) : 0.0
-contango_pct = valid_data and vx1 != 0 ? ((vx2 / vx1) - 1) * 100 : 0.0
+term_spread = valid_data ? (vx2 - vx1) : na
+contango_pct = valid_data ? ((vx2 / vx1) - 1) * 100 : na
 
 // VIX/VX1 Basis（现货溢价）- 恐慌领先指标
-vix_basis = valid_data and vx1 != 0 ? ((vix / vx1) - 1) * 100 : 0.0
+vix_basis = valid_data ? ((vix / vx1) - 1) * 100 : na
 
 // v7.9: Warmup 检查 - 确保百分位计算有足够数据
-has_sufficient_data = bar_index >= adapt_lookback
+core_observations = math.sum(valid_data ? 1 : 0, adapt_lookback)
+has_sufficient_data = not na(core_observations) and core_observations == adapt_lookback
 
 // 自适应阈值计算（带 warmup 保护）
 // v7.10: ta.percentile_linear_interpolation 必须每根K线调用，先算再选
@@ -340,18 +368,21 @@ is_high_vol = is_high_vol_state > 0.5
 lookback    = use_adaptive ? (is_high_vol ? len_high : len_low) : len_low
 avg   = ta.sma(term_spread, lookback)
 stdev = ta.stdev(term_spread, lookback)
-raw_z = (valid_data and stdev != 0) ? (term_spread - avg) / stdev : 0.0
+z_observations = math.sum(valid_data ? 1 : 0, lookback)
+has_z_history = valid_data and not na(avg) and not na(stdev) and z_observations == lookback
+raw_z = has_z_history ? (stdev > 0 ? (term_spread - avg) / stdev : 0.0) : na
 z_chart = ta.ema(raw_z, smooth_dyn)
+z_ready_observations = math.sum(has_z_history ? 1 : 0, smooth_dyn + momentum_bars)
+is_z_ready = has_z_history and z_ready_observations == smooth_dyn + momentum_bars
 
 // Z-Score 动量（变化率）- 带中性区域
 z_roc = z_chart - z_chart[momentum_bars]
 z_momentum_bullish_chart = z_roc < -z_momentum_neutral_zone  // Z 在下降超过阈值（恐慌加剧）
 z_momentum_bearish_chart = z_roc > z_momentum_neutral_zone   // Z 在上升超过阈值（贪婪加剧）
-z_momentum_flat = math.abs(z_roc) <= z_momentum_neutral_zone  // 中性区域
 
 // 周线 MTF 确认 (v7.7: 统一 lookahead 策略)
 // v7.10: 使用 SPX 日历对齐（VIX 为 SPX 衍生品），确保跨图表一致性
-z_weekly = request.security("SP:SPX", "W", z_chart, lookahead=lookahead_setting, ignore_invalid_symbol=true)
+z_weekly = request.security("SP:SPX", "W", is_z_ready ? z_chart : na, lookahead=lookahead_setting, ignore_invalid_symbol=true)
 // v7.9: 当 MTF 确认开启但周线数据不可用时，不允许信号通过（更保守）
 is_weekly_buy_aligned_chart = not na(z_weekly) ? z_weekly < -thresh_mid : not use_mtf_confirm
 is_weekly_sell_aligned_chart = not na(z_weekly) ? z_weekly > thresh_mid : not use_mtf_confirm
@@ -359,14 +390,14 @@ is_weekly_sell_aligned_chart = not na(z_weekly) ? z_weekly > thresh_mid : not us
 // Confirmed-only weekly source: [1] + hardcoded lookahead_on returns the last COMPLETED week identically on historical and realtime bars (outer request decoupled from the Trading Safe Mode toggle).
 // 注意: z_chart 的内层日线请求在周线上下文中是 D-in-W（低周期请求），仍随安全模式开关采样——开=取每周最后一个日线值(周五)，关=取第一个(周一)
 // Note: z_chart's inner daily requests become D-in-W (lower-TF) inside the weekly context and still follow the toggle — Safe Mode ON samples each completed week's LAST daily bar (Friday), OFF its FIRST (Monday).
-z_weekly_confirmed = request.security("SP:SPX", "W", z_chart[1], lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
+z_weekly_confirmed = request.security("SP:SPX", "W", is_z_ready[1] ? z_chart[1] : na, lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
 is_weekly_buy_aligned_confirmed = not na(z_weekly_confirmed) ? z_weekly_confirmed < -thresh_mid : not use_mtf_confirm
 is_weekly_sell_aligned_confirmed = not na(z_weekly_confirmed) ? z_weekly_confirmed > thresh_mid : not use_mtf_confirm
 
 // Smart SKEW - 优化：支持百分位数模式
 skew_avg   = ta.sma(skew, skew_len)
 skew_stdev = ta.stdev(skew, skew_len)
-skew_z     = skew_stdev != 0 ? (skew - skew_avg) / skew_stdev : 0.0
+skew_z     = na(skew_avg) or na(skew_stdev) ? na : skew_stdev > 0 ? (skew - skew_avg) / skew_stdev : 0.0
 
 // SKEW 百分位数计算（更自适应）
 skew_pct_high = ta.percentile_linear_interpolation(skew, 252, 90)
@@ -386,7 +417,7 @@ scaled_skew = not na(skew) ? (skew - 100) / 10 : na
 // VVIX 自适应阈值计算 (v7.1 新增)
 vvix_avg = ta.sma(vvix, 252)
 vvix_stdev = ta.stdev(vvix, 252)
-vvix_z = not na(vvix) and vvix_stdev != 0 ? (vvix - vvix_avg) / vvix_stdev : 0.0
+vvix_z = na(vvix) or na(vvix_avg) or na(vvix_stdev) ? na : vvix_stdev > 0 ? (vvix - vvix_avg) / vvix_stdev : 0.0
 vvix_pct_high = ta.percentile_linear_interpolation(vvix, 252, 90)
 vvix_pct_low  = ta.percentile_linear_interpolation(vvix, 252, 10)
 
@@ -399,36 +430,50 @@ is_vvix_calm = use_vvix and not na(vvix) and vvix_calm_check
 // Smart Volume - 使用滚动窗口最大值
 vol_ma = ta.sma(vx1_vol, vol_avg_len)
 vol_max_rolling = ta.highest(vx1_vol, 252)  // 滚动252日最大值
-is_vol_spike  = vx1_vol >= vol_ma * 2.5 
-is_vol_high   = vx1_vol >= vol_ma * 1.5 
-col_vol = is_vol_spike ? color.new(color.yellow, 30) : is_vol_high ? color.new(color.aqua, 60) : color.new(color.gray, 90)
-vol_visual_boost = is_vol_spike ? 1.2 : 1.0 
+is_volume_ready = not na(vx1_vol) and vx1_vol >= 0 and not na(vol_ma) and vol_ma > 0
+is_vol_spike  = is_volume_ready and vx1_vol >= vol_ma * 2.5
+is_vol_high   = is_volume_ready and vx1_vol >= vol_ma * 1.5
+vol_ratio_chart = is_volume_ready ? vx1_vol / vol_ma : na
+scaled_vol_chart = is_volume_ready and vol_max_rolling > 0 ? (vx1_vol * (is_vol_spike ? 1.2 : 1.0) / vol_max_rolling) * 1.8 - 3.8 : na
 has_core_panic_confirmation_chart = contango_pct < 0 or is_basis_panic or is_pcr_panic or is_vol_spike or (use_vvix and is_vvix_panic)
 has_core_euphoria_confirmation_chart = is_basis_calm or is_pcr_calm or is_skew_high or contango_pct > 10 or (use_vvix and is_vvix_calm)
 sell_requires_core_confirmation = sell_strictness == "High Win-Rate"
 
-// ========== 4. AI 信号算法 (Enhanced v7.0 - 模块化) ==========
+// Structure-only readiness: never pull chart-dependent trends into the daily Score request.
+// 仅结构数据有效性：避免把图表趋势引入Score或增加嵌套请求上下文。
+is_skew_ready = not na(skew) and skew > 0 and (skew_mode == "Relative (Z-Score)" ? not na(skew_z) : skew_mode == "Percentile (Adaptive)" ? not na(skew_pct_high) and not na(skew_pct_low) : true)
+is_pcr_ready = not na(pcr) and pcr > 0 and (not use_adaptive_thresholds or (has_sufficient_data and not na(pcr_pct_raw_high) and not na(pcr_pct_raw_low)))
+is_basis_ready = valid_data and (not use_adaptive_thresholds or (has_sufficient_data and not na(vix_basis_pct_raw_high) and not na(vix_basis_pct_raw_low)))
+is_vvix_ready = not use_vvix or (not na(vvix) and vvix > 0 and (vvix_threshold_mode == "Z-Score" ? not na(vvix_z) : vvix_threshold_mode == "Percentile" ? not na(vvix_pct_high) and not na(vvix_pct_low) : true))
+data_ready_chart = valid_data and is_z_ready and is_skew_ready and is_pcr_ready and is_basis_ready and is_volume_ready and is_vvix_ready
+
+// ========== 4. 结构评分 (Structure Score) ==========
 
 // 使用模块化评分函数
 // v7.10: Score 为纯 VIX 结构客观评分，不再包含趋势惩罚
 // 趋势过滤仅影响信号展示（BUY DIP → NO TRADE），不改变 Score
-float score_core_chart = calc_z_score_points(z_chart, thresh_mid, thresh_strong) +
-         calc_contango_points(contango_pct) +
-         calc_basis_points(is_basis_panic, is_basis_calm) +
-         calc_skew_points(is_skew_high, is_skew_low) +
-         calc_pcr_points(is_pcr_panic, is_pcr_calm) +
-         calc_vvix_points(is_vvix_panic, is_vvix_calm, use_vvix) +
-         (is_vol_spike and z_chart < -thresh_mid ? 1 : 0) +
-         (use_momentum_confirm and z_chart < -thresh_mid and z_momentum_bullish_chart ? 1 : 0) +
-         (use_momentum_confirm and z_chart > thresh_mid and z_momentum_bearish_chart ? -1 : 0)
+z_points_chart = calc_z_score_points(z_chart, thresh_mid, thresh_strong)
+contango_points_chart = calc_contango_points(contango_pct)
+basis_points_chart = calc_basis_points(is_basis_panic, is_basis_calm)
+skew_points_chart = calc_skew_points(is_skew_high, is_skew_low)
+pcr_points_chart = calc_pcr_points(is_pcr_panic, is_pcr_calm)
+vvix_points_chart = calc_vvix_points(is_vvix_panic, is_vvix_calm, use_vvix)
+volume_points_chart = is_vol_spike and z_chart < -thresh_mid ? 1 : 0
+momentum_points_chart = use_momentum_confirm and z_chart < -thresh_mid and z_momentum_bullish_chart ? 1 : use_momentum_confirm and z_chart > thresh_mid and z_momentum_bearish_chart ? -1 : 0
+float score_core_chart = z_points_chart + contango_points_chart + basis_points_chart + skew_points_chart + pcr_points_chart + vvix_points_chart + volume_points_chart + momentum_points_chart
 // v7.13: MTF 项拆分为 live / confirmed 两套：live 跟随实盘安全模式，confirmed 使用固定 lookahead 的已完成周线源
 // MTF terms split: live variant follows Trading Safe Mode; confirmed variant uses the hardcoded-lookahead completed-week source (toggle-independent).
 mtf_buy_pts_live = use_mtf_confirm and z_chart < -thresh_mid and is_weekly_buy_aligned_chart ? 1 : 0
 mtf_sell_pts_live = use_mtf_confirm and z_chart > thresh_mid and is_weekly_sell_aligned_chart ? -1 : 0
 mtf_buy_pts_confirmed = use_mtf_confirm and z_chart < -thresh_mid and is_weekly_buy_aligned_confirmed ? 1 : 0
 mtf_sell_pts_confirmed = use_mtf_confirm and z_chart > thresh_mid and is_weekly_sell_aligned_confirmed ? -1 : 0
-float score_chart = score_core_chart + mtf_buy_pts_live + mtf_sell_pts_live
-float score_confirmed_chart = score_core_chart + mtf_buy_pts_confirmed + mtf_sell_pts_confirmed
+data_ready_live_chart = data_ready_chart and (not use_mtf_confirm or not na(z_weekly))
+data_ready_confirmed_chart = data_ready_chart and (not use_mtf_confirm or not na(z_weekly_confirmed))
+float score_chart = data_ready_live_chart ? score_core_chart + mtf_buy_pts_live + mtf_sell_pts_live : na
+float score_confirmed_chart = data_ready_confirmed_chart ? score_core_chart + mtf_buy_pts_confirmed + mtf_sell_pts_confirmed : na
+factor_core_txt = "Z:" + str.tostring(z_points_chart) + " Contango/升水:" + str.tostring(contango_points_chart) + " Basis/基差:" + str.tostring(basis_points_chart) + " SKEW:" + str.tostring(skew_points_chart) + " PCR:" + str.tostring(pcr_points_chart) + " VVIX:" + str.tostring(vvix_points_chart) + " Vol/量:" + str.tostring(volume_points_chart) + " Mom/动量:" + str.tostring(momentum_points_chart)
+factor_live_txt = factor_core_txt + " MTF/周线:" + str.tostring(mtf_buy_pts_live + mtf_sell_pts_live)
+factor_confirmed_txt = factor_core_txt + " MTF/周线:" + str.tostring(mtf_buy_pts_confirmed + mtf_sell_pts_confirmed)
 
 // ========== 4.1 日线上下文评分源 (v7.13 Daily-Context Score Sourcing) ==========
 // H2: Score 及其门控因子在 SP:SPX 日线上下文统一计算：盘中与 1D 图得到一致的日线数值；周线/月线图按每根K线采样一个日线值（默认安全模式取最后一个日线值）
@@ -436,7 +481,7 @@ float score_confirmed_chart = score_core_chart + mtf_buy_pts_confirmed + mtf_sel
 // lookahead 跟随实盘安全模式 lookahead follows Trading Safe Mode:
 // ON = lookahead_off: 历史K线=已完成交易日, 实时K线=发展中的当日值 historical = completed days, realtime = developing day
 // OFF = lookahead_on: 历史盘中K线=当日最终值(重绘语义与 v7.12 一致, 数值已改为日线口径) historical intraday = same-day final values (repaint semantics as in v7.12; values are now daily-context)
-[score, z, z_momentum_bullish, z_momentum_bearish, has_core_panic_confirmation, has_core_euphoria_confirmation, is_weekly_buy_aligned, is_weekly_sell_aligned] = request.security("SP:SPX", "D", [score_chart, z_chart, z_momentum_bullish_chart, z_momentum_bearish_chart, has_core_panic_confirmation_chart, has_core_euphoria_confirmation_chart, is_weekly_buy_aligned_chart, is_weekly_sell_aligned_chart], lookahead=lookahead_setting, ignore_invalid_symbol=true)
+[score_live, z_live, z_mom_bull_live, z_mom_bear_live, core_panic_live, core_euphoria_live, weekly_buy_live, weekly_sell_live, data_ready_live, vol_ratio_live, vol_spike_live, vol_high_live, scaled_vol_live, factor_breakdown_live, structure_day_live, contango_live] = request.security("SP:SPX", "D", [score_chart, z_chart, z_momentum_bullish_chart, z_momentum_bearish_chart, has_core_panic_confirmation_chart, has_core_euphoria_confirmation_chart, is_weekly_buy_aligned_chart, is_weekly_sell_aligned_chart, data_ready_live_chart, vol_ratio_chart, is_vol_spike, is_vol_high, scaled_vol_chart, factor_live_txt, day_id_src, contango_pct], lookahead=lookahead_setting, ignore_invalid_symbol=true)
 
 // H1: confirmed 锚点 — 元素逐项 [1] 偏移 + 固定 lookahead_on，在历史与实时K线上一致地返回上一已完成结构日
 // 链路级解耦：confirmed 链内的 D-in-D 内层请求对开关不敏感（前提是符号遵循美股日历；24小时日历的自定义 VIX/PCR/趋势符号会让快照在开关间偏移一天），故默认配置下 confirmed 路径不随安全模式开关变化
@@ -444,72 +489,67 @@ float score_confirmed_chart = score_core_chart + mtf_buy_pts_confirmed + mtf_sel
 // Chain-level decoupling: the inner D-in-D requests in the confirmed chain are toggle-inert (assuming US-calendar symbols; 24h-calendar custom VIX/PCR/trend symbols shift the snapshot one day between toggle states), so in the default config the confirmed path is independent of the Trading Safe Mode toggle.
 // 例外: use_mtf_confirm 开启时，周线 MTF 腿（z_weekly_confirmed）在周线上下文内的 D-in-W 日线采样仍随开关变化（开=周五样本，关=周一样本），confirmed 评分可能相差 ±1——建议保持安全模式开启
 // Exception: with use_mtf_confirm ON, the weekly MTF leg (z_weekly_confirmed) samples its inner daily data D-in-W and still follows the toggle (ON = Friday sample, OFF = Monday sample), which can shift the confirmed score by +/-1 — keep Safe Mode ON.
-[confirmed_day_id_d, confirmed_score_d, confirmed_z_d, confirmed_vix_d, confirmed_skew_d, confirmed_spx_bull_d, confirmed_ndx_bull_d, confirmed_rut_bull_d, confirmed_manual_bull_d, confirmed_z_mom_bull_d, confirmed_z_mom_bear_d, confirmed_core_panic_d, confirmed_core_euphoria_d, confirmed_weekly_buy_d, confirmed_weekly_sell_d] = request.security("SP:SPX", "D", [day_id_src[1], score_confirmed_chart[1], z_chart[1], vix[1], skew[1], is_spx_bull[1], is_ndx_bull[1], is_rut_bull[1], is_manual_bull[1], z_momentum_bullish_chart[1], z_momentum_bearish_chart[1], has_core_panic_confirmation_chart[1], has_core_euphoria_confirmation_chart[1], is_weekly_buy_aligned_confirmed[1], is_weekly_sell_aligned_confirmed[1]], lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
+[confirmed_day_id_d, confirmed_score_d, confirmed_z_d, confirmed_vix_d, confirmed_skew_d, confirmed_spx_bull_d, confirmed_ndx_bull_d, confirmed_rut_bull_d, confirmed_manual_bull_d, confirmed_z_mom_bull_d, confirmed_z_mom_bear_d, confirmed_core_panic_d, confirmed_core_euphoria_d, confirmed_weekly_buy_d, confirmed_weekly_sell_d, data_ready_confirmed_d, confirmed_spx_ready_d, confirmed_ndx_ready_d, confirmed_rut_ready_d, confirmed_manual_ready_d, vol_ratio_confirmed_d, vol_spike_confirmed_d, vol_high_confirmed_d, scaled_vol_confirmed_d, factor_breakdown_confirmed_d, contango_confirmed_d] = request.security("SP:SPX", "D", [day_id_src[1], score_confirmed_chart[1], z_chart[1], vix[1], skew[1], is_spx_bull[1], is_ndx_bull[1], is_rut_bull[1], is_manual_bull[1], z_momentum_bullish_chart[1], z_momentum_bearish_chart[1], has_core_panic_confirmation_chart[1], has_core_euphoria_confirmation_chart[1], is_weekly_buy_aligned_confirmed[1], is_weekly_sell_aligned_confirmed[1], data_ready_confirmed_chart[1], is_spx_trend_ready[1], is_ndx_trend_ready[1], is_rut_trend_ready[1], is_manual_trend_ready[1], vol_ratio_chart[1], is_vol_spike[1], is_vol_high[1], scaled_vol_chart[1], factor_confirmed_txt[1], contango_pct[1]], lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
+
+// Select one coherent source for Score, chart gates and explanatory volume.
+// 评分、图表门控与成交量解释统一取源；自动识别留在图表层，绝不进入Score。
+use_completed_chart_source = use_confirmed_signals and timeframe.isintraday
+data_ready = use_completed_chart_source ? data_ready_confirmed_d : data_ready_live
+score = use_completed_chart_source ? confirmed_score_d : score_live
+z = data_ready ? (use_completed_chart_source ? confirmed_z_d : z_live) : na
+z_momentum_bullish = use_completed_chart_source ? confirmed_z_mom_bull_d : z_mom_bull_live
+z_momentum_bearish = use_completed_chart_source ? confirmed_z_mom_bear_d : z_mom_bear_live
+has_core_panic_confirmation = use_completed_chart_source ? confirmed_core_panic_d : core_panic_live
+has_core_euphoria_confirmation = use_completed_chart_source ? confirmed_core_euphoria_d : core_euphoria_live
+is_weekly_buy_aligned = use_completed_chart_source ? confirmed_weekly_buy_d : weekly_buy_live
+is_weekly_sell_aligned = use_completed_chart_source ? confirmed_weekly_sell_d : weekly_sell_live
+vol_ratio_daily = use_completed_chart_source ? vol_ratio_confirmed_d : vol_ratio_live
+is_vol_spike_daily = use_completed_chart_source ? vol_spike_confirmed_d : vol_spike_live
+is_vol_high_daily = use_completed_chart_source ? vol_high_confirmed_d : vol_high_live
+scaled_vol_daily = use_completed_chart_source ? scaled_vol_confirmed_d : scaled_vol_live
+factor_breakdown = use_completed_chart_source ? factor_breakdown_confirmed_d : factor_breakdown_live
+structure_day = use_completed_chart_source ? confirmed_day_id_d : structure_day_live
+contango_daily = use_completed_chart_source ? contango_confirmed_d : contango_live
+signal_skew = use_completed_chart_source ? confirmed_skew_d : skew
+confirmed_auto_bull_d = is_russell_chart ? confirmed_rut_bull_d : is_nasdaq_chart ? confirmed_ndx_bull_d : confirmed_spx_bull_d
+confirmed_primary_bull_d = auto_detect_index ? confirmed_auto_bull_d : confirmed_manual_bull_d
+confirmed_auto_ready_d = is_russell_chart ? confirmed_rut_ready_d : is_nasdaq_chart ? confirmed_ndx_ready_d : confirmed_spx_ready_d
+confirmed_primary_ready_d = auto_detect_index ? confirmed_auto_ready_d : confirmed_manual_ready_d
+signal_trend_ready = use_completed_chart_source ? confirmed_primary_ready_d : is_primary_trend_ready
+signal_trend_bull = use_completed_chart_source ? confirmed_primary_bull_d : is_primary_bull
+signal_vix = use_completed_chart_source ? confirmed_vix_d : vix
+signal_vix_regime = na(signal_vix) or signal_vix <= 0 ? 0 : signal_vix < vix_low_thresh ? 1 : signal_vix > vix_high_thresh ? 3 : 2
 
 // 盘中锚定到已完成结构日；日线及以上保持图表自身日期，逐K线快照+收盘发送（保留 v7.12 的 1D 行为）
 // Intraday anchors to the completed structure day; 1D+ keeps the chart's own date so the v7.12 same-bar-close semantics are preserved.
 confirmed_structure_day_id = timeframe.isintraday ? math.round(confirmed_day_id_d) : day_id_src
 
-// ========== 5. 三级买入信号 (v7.0 新增, v7.3 优化) ==========
-// 基于 Score 评级的信号触发（首次进入该评级时触发）
-is_crash_buy_raw = score >= 6 and score[1] < 6
-is_strong_buy_raw = score >= 5 and score < 6 and score[1] < 5
-is_buy_dip_raw = score >= min_score_buy and score < 5 and score[1] < min_score_buy
-
-// 卖出信号原始判断
-is_euphoria_sell_raw = score <= -6 and score[1] > -6
-is_strong_sell_raw = score <= -5 and score > -6 and score[1] > -5
-is_sell_hedge_raw = score <= -2 and score > -5 and score[1] > -2
-
-// 信号确认机制 (v7.1 新增) - 仅在 K 线确认后触发
-is_crash_buy = use_confirmed_signals ? (is_crash_buy_raw and barstate.isconfirmed) : is_crash_buy_raw
-is_strong_buy = use_confirmed_signals ? (is_strong_buy_raw and barstate.isconfirmed) : is_strong_buy_raw
-is_buy_dip_base = use_confirmed_signals ? (is_buy_dip_raw and barstate.isconfirmed) : is_buy_dip_raw
-is_euphoria_sell = use_confirmed_signals ? (is_euphoria_sell_raw and barstate.isconfirmed) : is_euphoria_sell_raw
-is_strong_sell_base = use_confirmed_signals ? (is_strong_sell_raw and barstate.isconfirmed) : is_strong_sell_raw
-is_sell_hedge_base = use_confirmed_signals ? (is_sell_hedge_raw and barstate.isconfirmed) : is_sell_hedge_raw
-
-// ===== v7.3 新增：信号冷却追踪变量 =====
-var int last_sell_hedge_bar = 0
-var int last_buy_dip_bar = 0
-
-// ===== v7.3 新增：增强版 sell_hedge/buy_dip 信号过滤 =====
-// sell_hedge 增强条件：
-// 1. VIX Regime 不是 LOW VOL（低波动期不需要对冲）
-// 2. Z Momentum 上升（贪婪加剧）或 Weekly 卖出对齐
-// 3. 满足信号冷却间隔
+// ========== 5. 信号事件与共享过滤 (Signal Events & Shared Gates) ==========
 is_sell_hedge_momentum_ok = z_momentum_bearish or (use_mtf_confirm and is_weekly_sell_aligned) or not use_momentum_confirm
-is_sell_hedge_cooldown_ok = bar_index - last_sell_hedge_bar > signal_display_cooldown
-sell_core_ok = not sell_requires_core_confirmation or has_core_euphoria_confirmation
-is_sell_hedge = is_sell_hedge_base and vix_regime != 1 and is_sell_hedge_momentum_ok and is_sell_hedge_cooldown_ok and sell_core_ok
-
-// buy_dip 增强条件：
-// 1. VIX Regime 不是 HIGH VOL（高波动期等待更强信号）
-// 2. Z Momentum 下降（恐慌加剧）或 Weekly 买入对齐
-// 3. 满足信号冷却间隔
 is_buy_dip_momentum_ok = z_momentum_bullish or (use_mtf_confirm and is_weekly_buy_aligned) or not use_momentum_confirm
-is_buy_dip_cooldown_ok = bar_index - last_buy_dip_bar > signal_display_cooldown
-is_buy_dip = is_buy_dip_base and vix_regime != 3 and is_buy_dip_momentum_ok and is_buy_dip_cooldown_ok
-
-// 更新冷却追踪
-if is_sell_hedge
+signal_data_ready = data_ready and signal_vix_regime != 0
+[buy_setup_level, sell_setup_level, setup_block_reason] = f_signal_setup(score, signal_data_ready, signal_vix_regime, is_buy_dip_momentum_ok, is_sell_hedge_momentum_ok, z, thresh_mid, min_score_buy, has_core_panic_confirmation, has_core_euphoria_confirmation, sell_requires_core_confirmation, use_trend_filter, signal_trend_ready, signal_trend_bull)
+buy_transition_level = f_buy_transition(score, score[1], min_score_buy)
+sell_transition_level = f_sell_transition(score, score[1])
+// Completed intraday data is already confirmed; 1D+ waits for the chart close.
+// 盘中已完成日线无需再等分钟K线收盘；日线及以上仍等待图表收盘。
+chart_signal_confirmed = not use_confirmed_signals or use_completed_chart_source or barstate.isconfirmed
+var int last_sell_hedge_bar = na
+var int last_buy_dip_bar = na
+is_sell_hedge_cooldown_ok = na(last_sell_hedge_bar) or bar_index - last_sell_hedge_bar > signal_display_cooldown
+is_buy_dip_cooldown_ok = na(last_buy_dip_bar) or bar_index - last_buy_dip_bar > signal_display_cooldown
+final_crash_buy = chart_signal_confirmed and buy_transition_level == 3 and buy_setup_level == 3
+final_strong_buy = chart_signal_confirmed and buy_transition_level == 2 and buy_setup_level == 2
+final_buy_dip = chart_signal_confirmed and buy_transition_level == 1 and buy_setup_level == 1 and is_buy_dip_cooldown_ok
+final_euphoria_sell = chart_signal_confirmed and sell_transition_level == 3 and sell_setup_level == 3
+final_strong_sell = chart_signal_confirmed and sell_transition_level == 2 and sell_setup_level == 2
+final_sell_hedge = chart_signal_confirmed and sell_transition_level == 1 and sell_setup_level == 1 and is_sell_hedge_cooldown_ok
+// Only visible, fully filtered events consume display cooldown.
+// 只有通过全部过滤的最终信号才消耗显示冷却，过滤失败不记账。
+if final_sell_hedge
     last_sell_hedge_bar := bar_index
-if is_buy_dip
+if final_buy_dip
     last_buy_dip_bar := bar_index
-
-// 趋势过滤
-is_signal_allowed = use_trend_filter ? is_bull_market : true
-
-// 最终信号（用于 Alert 和图表标签）
-final_crash_buy = is_crash_buy  // CRASH BUY 不受趋势过滤限制
-final_strong_buy = is_strong_buy  // STRONG BUY 不受趋势过滤限制
-final_buy_dip = is_buy_dip and is_signal_allowed and z < -thresh_mid and has_core_panic_confirmation  // BUY DIP 需核心恐慌确认
-final_euphoria_sell = is_euphoria_sell  // EUPHORIA 保持最强极端顶部，不加额外核心过滤
-final_strong_sell = is_strong_sell_base and sell_core_ok
-final_sell_hedge = is_sell_hedge
-
-final_buy_signal = final_crash_buy or final_strong_buy or final_buy_dip
-final_sell_signal = final_euphoria_sell or final_strong_sell or final_sell_hedge
 
 // 信号等级函数 (优先级越高值越大)
 // Buy: 0=无, 1=BUY_DIP, 2=STRONG_BUY, 3=CRASH_BUY
@@ -553,37 +593,28 @@ confirmed_feed_score = timeframe.isintraday ? confirmed_score_d : score
 confirmed_feed_z = timeframe.isintraday ? confirmed_z_d : z
 confirmed_feed_vix = timeframe.isintraday ? confirmed_vix_d : vix
 confirmed_feed_skew = timeframe.isintraday ? confirmed_skew_d : skew
-confirmed_feed_vix_regime = confirmed_feed_vix < vix_low_thresh ? 1 : confirmed_feed_vix > vix_high_thresh ? 3 : 2
-confirmed_feed_vix_regime_txt = confirmed_feed_vix_regime == 1 ? "LOW" : confirmed_feed_vix_regime == 3 ? "HIGH" : "NORM"
-confirmed_trend_txt_d = (confirmed_spx_bull_d ? "🟢" : "🔴") + "SPX " + (confirmed_ndx_bull_d ? "🟢" : "🔴") + "NDX " + (confirmed_rut_bull_d ? "🟢" : "🔴") + "RUT"
+confirmed_feed_vix_regime = na(confirmed_feed_vix) or confirmed_feed_vix <= 0 ? 0 : confirmed_feed_vix < vix_low_thresh ? 1 : confirmed_feed_vix > vix_high_thresh ? 3 : 2
+confirmed_feed_vix_regime_txt = confirmed_feed_vix_regime == 0 ? "N/A" : confirmed_feed_vix_regime == 1 ? "LOW" : confirmed_feed_vix_regime == 3 ? "HIGH" : "NORM"
+confirmed_trend_txt_d = (not confirmed_spx_ready_d ? "⚪" : confirmed_spx_bull_d ? "🟢" : "🔴") + "SPX " + (not confirmed_ndx_ready_d ? "⚪" : confirmed_ndx_bull_d ? "🟢" : "🔴") + "NDX " + (not confirmed_rut_ready_d ? "⚪" : confirmed_rut_bull_d ? "🟢" : "🔴") + "RUT"
+signal_trend_txt = use_completed_chart_source ? confirmed_trend_txt_d : trend_status_txt
+signal_vix_regime_txt = signal_vix_regime == 0 ? "N/A" : signal_vix_regime == 1 ? "LOW" : signal_vix_regime == 3 ? "HIGH" : "NORM"
 confirmed_feed_trend_txt = timeframe.isintraday ? confirmed_trend_txt_d : trend_status_txt
-// v7.13: confirmed 趋势门控同样取自已完成结构日快照（与告警趋势文本同源），不读取实时趋势，保证重载一致并与安全模式开关解耦
-// Confirmed trend gate also comes from the completed-structure-day snapshot (same source as the alert trend text): no live trend read, reload-stable, Trading Safe Mode independent.
-// 注意: is_primary_bull 不能直接放入 tuple（syminfo.ticker 在 security 上下文中解析为 SPX，会破坏自动识别），故在图表层用已快照的分指数布尔值重建
-// Note: is_primary_bull must NOT go into the tuple (syminfo.ticker resolves to SPX inside the security context, breaking auto-detect); rebuild at chart level from the snapshotted per-index bools.
-confirmed_auto_bull_d = is_russell_chart ? confirmed_rut_bull_d : is_nasdaq_chart ? confirmed_ndx_bull_d : confirmed_spx_bull_d
-confirmed_primary_bull_d = auto_detect_index ? confirmed_auto_bull_d : confirmed_manual_bull_d
-confirmed_signal_allowed_d = use_trend_filter ? confirmed_primary_bull_d : true
-confirmed_feed_signal_allowed = timeframe.isintraday ? confirmed_signal_allowed_d : is_signal_allowed
+confirmed_feed_trend_ready = timeframe.isintraday ? confirmed_primary_ready_d : is_primary_trend_ready
+confirmed_feed_trend_bull = timeframe.isintraday ? confirmed_primary_bull_d : is_primary_bull
+confirmed_feed_ready = (timeframe.isintraday ? data_ready_confirmed_d : data_ready) and confirmed_feed_vix_regime != 0
 confirmed_d_momentum_buy_ok = confirmed_z_mom_bull_d or (use_mtf_confirm and confirmed_weekly_buy_d) or not use_momentum_confirm
 confirmed_d_momentum_sell_ok = confirmed_z_mom_bear_d or (use_mtf_confirm and confirmed_weekly_sell_d) or not use_momentum_confirm
 confirmed_feed_momentum_buy_ok = timeframe.isintraday ? confirmed_d_momentum_buy_ok : is_buy_dip_momentum_ok
 confirmed_feed_momentum_sell_ok = timeframe.isintraday ? confirmed_d_momentum_sell_ok : is_sell_hedge_momentum_ok
 confirmed_feed_core_panic = timeframe.isintraday ? confirmed_core_panic_d : has_core_panic_confirmation
 confirmed_feed_core_euphoria = timeframe.isintraday ? confirmed_core_euphoria_d : has_core_euphoria_confirmation
+[confirmed_buy_setup, confirmed_sell_setup, confirmed_block_reason] = f_signal_setup(confirmed_feed_score, confirmed_feed_ready, confirmed_feed_vix_regime, confirmed_feed_momentum_buy_ok, confirmed_feed_momentum_sell_ok, confirmed_feed_z, thresh_mid, min_score_buy, confirmed_feed_core_panic, confirmed_feed_core_euphoria, sell_requires_core_confirmation, use_trend_filter, confirmed_feed_trend_ready, confirmed_feed_trend_bull)
 
 if new_confirmed_structure_day
-    confirmed_prev_score = last_confirmed_structure_score
-    confirmed_has_prev = not na(confirmed_prev_score)
-    confirmed_sell_core_ok = not sell_requires_core_confirmation or confirmed_feed_core_euphoria
-    confirmed_crash_buy = confirmed_has_prev and confirmed_feed_score >= 6 and confirmed_prev_score < 6
-    confirmed_strong_buy = confirmed_has_prev and confirmed_feed_score >= 5 and confirmed_feed_score < 6 and confirmed_prev_score < 5
-    confirmed_buy_dip = confirmed_has_prev and confirmed_feed_score >= min_score_buy and confirmed_feed_score < 5 and confirmed_prev_score < min_score_buy and confirmed_feed_vix_regime != 3 and confirmed_feed_momentum_buy_ok and confirmed_feed_signal_allowed and confirmed_feed_z < -thresh_mid and confirmed_feed_core_panic
-    confirmed_euphoria_sell = confirmed_has_prev and confirmed_feed_score <= -6 and confirmed_prev_score > -6
-    confirmed_strong_sell = confirmed_has_prev and confirmed_feed_score <= -5 and confirmed_feed_score > -6 and confirmed_prev_score > -5 and confirmed_sell_core_ok
-    confirmed_sell_hedge = confirmed_has_prev and confirmed_feed_score <= -2 and confirmed_feed_score > -5 and confirmed_prev_score > -2 and confirmed_feed_vix_regime != 1 and confirmed_feed_momentum_sell_ok and confirmed_sell_core_ok
-    pending_confirmed_buy_level := f_buy_signal_level(confirmed_crash_buy, confirmed_strong_buy, confirmed_buy_dip)
-    pending_confirmed_sell_level := f_sell_signal_level(confirmed_euphoria_sell, confirmed_strong_sell, confirmed_sell_hedge)
+    confirmed_buy_transition = f_buy_transition(confirmed_feed_score, last_confirmed_structure_score, min_score_buy)
+    confirmed_sell_transition = f_sell_transition(confirmed_feed_score, last_confirmed_structure_score)
+    pending_confirmed_buy_level := confirmed_buy_setup == confirmed_buy_transition ? confirmed_buy_setup : 0
+    pending_confirmed_sell_level := confirmed_sell_setup == confirmed_sell_transition ? confirmed_sell_setup : 0
     pending_confirmed_structure_day := confirmed_structure_day_id
     pending_confirmed_score := confirmed_feed_score
     pending_confirmed_z := confirmed_feed_z
@@ -595,23 +626,36 @@ if new_confirmed_structure_day
 
 is_alert_preview_mode = alert_timing_mode == "Preview / Earliest Possible"
 is_regular_session_only = after_hours_alert_policy == "Regular Session Only"
-is_hybrid_alert_mode = is_alert_preview_mode and vix_timeframe == "Chart"
+is_hybrid_alert_mode = is_alert_preview_mode and vix_timeframe == "Chart" and not use_completed_chart_source
 alert_mode_tag = is_alert_preview_mode ? "[PREVIEW]" : "[CONFIRMED]"
 alert_mode_panel = is_alert_preview_mode ? (is_hybrid_alert_mode ? "PREVIEW*" : "PREVIEW") : "CONFIRMED"
-alert_mode_desc = is_alert_preview_mode ? (is_hybrid_alert_mode ? "Hybrid preview" : "Preview") : "Confirmed"
+alert_mode_desc = is_alert_preview_mode ? (use_completed_chart_source ? "Preview routing, completed D / 预览路由，已完成日线" : is_hybrid_alert_mode ? "Hybrid preview / 混合预览" : "Preview / 预览") : "Confirmed / 已确认"
 regular_session_bar = not timeframe.isintraday or session.ismarket
 // 非常规时段（盘前/盘后）统一按 extended 处理，避免不同品种会话定义差异导致漏拦截。
 extended_preview_bar = is_alert_preview_mode and timeframe.isintraday and not session.ismarket
 allow_alert_now = not is_regular_session_only or regular_session_bar
-confirmed_emit_now = timeframe.isintraday ? (regular_session_bar and (not new_confirmed_structure_day or has_new_chart_day)) : barstate.isconfirmed
+// 已完成日线快照可在首根常规时段立即发送；结构日去重负责防重，不再等待图表日期切换。
+// The completed daily snapshot can emit on the first regular-session bar; structure-day dedup prevents repeats.
+confirmed_emit_now = timeframe.isintraday ? regular_session_bar : barstate.isconfirmed
 
 // ========== 6. 信号统计 (v7.0 新增, v7.7 改为滚动窗口) ==========
 // v7.7: 使用 math.sum() 滚动窗口统计，替代累积计数
-// 这确保统计始终反映"最近 N 年"的数据，不会随时间漂移
+// 按信号日期统计最近 N*252 个交易日；只纳入已收盘且收益端点有效的样本。
+// Window uses signal dates over the last N*252 trading days; only closed, valid evaluations count.
 is_stats_daily_chart = timeframe.isdaily and timeframe.multiplier == 1
+is_stats_compatible_calendar = syminfo.timezone == "America/New_York" and (syminfo.type == "stock" or syminfo.type == "fund" or syminfo.type == "index")
+is_stats_eligible_chart = is_stats_daily_chart and is_stats_compatible_calendar
 stats_lookback_bars = stats_lookback_years * 252
-stats_max_hold_bars = math.max(crash_return_bars, math.max(strong_return_bars, dip_return_bars))
-stats_ready = is_stats_daily_chart and bar_index >= stats_lookback_bars + stats_max_hold_bars
+crash_stats_window = stats_lookback_bars - crash_return_bars
+strong_stats_window = stats_lookback_bars - strong_return_bars
+dip_stats_window = stats_lookback_bars - dip_return_bars
+// bar_index 可包含 calc_bars_count 窗口之前未执行的历史，须累计实际执行并已收盘的K线。
+// bar_index can include unexecuted history before calc_bars_count; count executed closed bars instead.
+var int stats_closed_bars = 0
+if barstate.isconfirmed
+    stats_closed_bars += 1
+stats_ready = is_stats_eligible_chart and stats_closed_bars >= stats_lookback_bars
+stats_exit_confirmed = is_stats_eligible_chart and barstate.isconfirmed
 
 // 统计只使用 1D 图表上的 confirmed 最终信号，避免 intraday 展开的 HTF 数据扭曲胜率。
 stats_crash_buy = final_crash_buy and barstate.isconfirmed
@@ -624,55 +668,64 @@ stats_sell_hedge = final_sell_hedge and barstate.isconfirmed
 // v7.10: 统计收益使用对应指数（Auto-Detect: QQQ→NDX, IWM→RUT, 其他→SPX）
 // 确保过滤逻辑和统计口径一致
 auto_ref_close = is_russell_chart ? rut_close : is_nasdaq_chart ? ndx_close : spx_close
-ref_close = auto_detect_index ? auto_ref_close : (not na(manual_close) ? manual_close : spx_close)
+// 手动源缺失时保留 na，不能在同一收益区间混用 SPX 与手动标的。
+// Preserve missing manual data; never mix SPX and the manual instrument within one return.
+ref_close = auto_detect_index ? auto_ref_close : manual_close
 
-// 回报计算：信号发出后 N 天的收益
-crash_ref_return = not na(ref_close) and not na(ref_close[crash_return_bars]) ? (ref_close - ref_close[crash_return_bars]) / ref_close[crash_return_bars] * 100 : 0.0
-strong_ref_return = not na(ref_close) and not na(ref_close[strong_return_bars]) ? (ref_close - ref_close[strong_return_bars]) / ref_close[strong_return_bars] * 100 : 0.0
-dip_ref_return = not na(ref_close) and not na(ref_close[dip_return_bars]) ? (ref_close - ref_close[dip_return_bars]) / ref_close[dip_return_bars] * 100 : 0.0
+// 回报计算：端点须有效且严格为正；缺失收益不能当作零收益的卖出胜例。
+// Both endpoints must be valid and strictly positive; missing returns are not zero-return sell wins.
+crash_return_valid = not na(ref_close) and ref_close > 0 and not na(ref_close[crash_return_bars]) and ref_close[crash_return_bars] > 0
+strong_return_valid = not na(ref_close) and ref_close > 0 and not na(ref_close[strong_return_bars]) and ref_close[strong_return_bars] > 0
+dip_return_valid = not na(ref_close) and ref_close > 0 and not na(ref_close[dip_return_bars]) and ref_close[dip_return_bars] > 0
+crash_ref_return = crash_return_valid ? (ref_close - ref_close[crash_return_bars]) / ref_close[crash_return_bars] * 100 : na
+strong_ref_return = strong_return_valid ? (ref_close - ref_close[strong_return_bars]) / ref_close[strong_return_bars] * 100 : na
+dip_ref_return = dip_return_valid ? (ref_close - ref_close[dip_return_bars]) / ref_close[dip_return_bars] * 100 : na
 
 // v7.7: 滚动窗口收益统计
-// 仅当 N 天前有信号时，才计入当前收益
-crash_eval_num = stats_crash_buy[crash_return_bars] ? 1 : 0
-strong_eval_num = stats_strong_buy[strong_return_bars] ? 1 : 0
-dip_eval_num = stats_buy_dip[dip_return_bars] ? 1 : 0
-euphoria_eval_num = stats_euphoria_sell[crash_return_bars] ? 1 : 0
-strong_sell_eval_num = stats_strong_sell[strong_return_bars] ? 1 : 0
-sell_hedge_eval_num = stats_sell_hedge[dip_return_bars] ? 1 : 0
-crash_win_num = stats_crash_buy[crash_return_bars] and crash_ref_return > 0 ? 1 : 0
-strong_win_num = stats_strong_buy[strong_return_bars] and strong_ref_return > 0 ? 1 : 0
-dip_win_num = stats_buy_dip[dip_return_bars] and dip_ref_return > 0 ? 1 : 0
-euphoria_win_num = stats_euphoria_sell[crash_return_bars] and crash_ref_return <= 0 ? 1 : 0
-strong_sell_win_num = stats_strong_sell[strong_return_bars] and strong_ref_return <= 0 ? 1 : 0
-sell_hedge_win_num = stats_sell_hedge[dip_return_bars] and dip_ref_return <= 0 ? 1 : 0
-crash_return_contrib = stats_crash_buy[crash_return_bars] ? crash_ref_return : 0.0
-strong_return_contrib = stats_strong_buy[strong_return_bars] ? strong_ref_return : 0.0
-dip_return_contrib = stats_buy_dip[dip_return_bars] ? dip_ref_return : 0.0
-euphoria_return_contrib = stats_euphoria_sell[crash_return_bars] ? crash_ref_return : 0.0
-strong_sell_return_contrib = stats_strong_sell[strong_return_bars] ? strong_ref_return : 0.0
-sell_hedge_return_contrib = stats_sell_hedge[dip_return_bars] ? dip_ref_return : 0.0
+// 样本数、胜例和收益贡献共用同一有效性门控，持有周期终点须已收盘。
+// Counts, wins and contributions share eligibility; the holding-period exit bar must be closed.
+crash_eval_num = stats_exit_confirmed and crash_return_valid and stats_crash_buy[crash_return_bars] ? 1 : 0
+strong_eval_num = stats_exit_confirmed and strong_return_valid and stats_strong_buy[strong_return_bars] ? 1 : 0
+dip_eval_num = stats_exit_confirmed and dip_return_valid and stats_buy_dip[dip_return_bars] ? 1 : 0
+euphoria_eval_num = stats_exit_confirmed and crash_return_valid and stats_euphoria_sell[crash_return_bars] ? 1 : 0
+strong_sell_eval_num = stats_exit_confirmed and strong_return_valid and stats_strong_sell[strong_return_bars] ? 1 : 0
+sell_hedge_eval_num = stats_exit_confirmed and dip_return_valid and stats_sell_hedge[dip_return_bars] ? 1 : 0
+crash_win_num = crash_eval_num == 1 and crash_ref_return > 0 ? 1 : 0
+strong_win_num = strong_eval_num == 1 and strong_ref_return > 0 ? 1 : 0
+dip_win_num = dip_eval_num == 1 and dip_ref_return > 0 ? 1 : 0
+euphoria_win_num = euphoria_eval_num == 1 and crash_ref_return <= 0 ? 1 : 0
+strong_sell_win_num = strong_sell_eval_num == 1 and strong_ref_return <= 0 ? 1 : 0
+sell_hedge_win_num = sell_hedge_eval_num == 1 and dip_ref_return <= 0 ? 1 : 0
+crash_return_contrib = crash_eval_num == 1 ? crash_ref_return : 0.0
+strong_return_contrib = strong_eval_num == 1 ? strong_ref_return : 0.0
+dip_return_contrib = dip_eval_num == 1 ? dip_ref_return : 0.0
+euphoria_return_contrib = euphoria_eval_num == 1 ? crash_ref_return : 0.0
+strong_sell_return_contrib = strong_sell_eval_num == 1 ? strong_ref_return : 0.0
+sell_hedge_return_contrib = sell_hedge_eval_num == 1 ? dip_ref_return : 0.0
 
 // 滚动窗口内的收益总和
-crash_buy_return_sum = math.sum(crash_return_contrib, stats_lookback_bars)
-strong_buy_return_sum = math.sum(strong_return_contrib, stats_lookback_bars)
-buy_dip_return_sum = math.sum(dip_return_contrib, stats_lookback_bars)
-euphoria_sell_return_sum = math.sum(euphoria_return_contrib, stats_lookback_bars)
-strong_sell_return_sum = math.sum(strong_sell_return_contrib, stats_lookback_bars)
-sell_hedge_return_sum = math.sum(sell_hedge_return_contrib, stats_lookback_bars)
+// 减去持有期后，窗口最老样本的信号日期恰为当前日期前 lookback-1 根K线。
+// Subtract the hold so the oldest included signal is exactly lookback-1 bars old.
+crash_buy_return_sum = math.sum(crash_return_contrib, crash_stats_window)
+strong_buy_return_sum = math.sum(strong_return_contrib, strong_stats_window)
+buy_dip_return_sum = math.sum(dip_return_contrib, dip_stats_window)
+euphoria_sell_return_sum = math.sum(euphoria_return_contrib, crash_stats_window)
+strong_sell_return_sum = math.sum(strong_sell_return_contrib, strong_stats_window)
+sell_hedge_return_sum = math.sum(sell_hedge_return_contrib, dip_stats_window)
 
 // 滚动窗口内只统计已经走完持有周期的样本。
-crash_buy_evaluated_count = math.round(math.sum(crash_eval_num, stats_lookback_bars))
-strong_buy_evaluated_count = math.round(math.sum(strong_eval_num, stats_lookback_bars))
-buy_dip_evaluated_count = math.round(math.sum(dip_eval_num, stats_lookback_bars))
-euphoria_sell_evaluated_count = math.round(math.sum(euphoria_eval_num, stats_lookback_bars))
-strong_sell_evaluated_count = math.round(math.sum(strong_sell_eval_num, stats_lookback_bars))
-sell_hedge_evaluated_count = math.round(math.sum(sell_hedge_eval_num, stats_lookback_bars))
-crash_buy_win_count = math.round(math.sum(crash_win_num, stats_lookback_bars))
-strong_buy_win_count = math.round(math.sum(strong_win_num, stats_lookback_bars))
-buy_dip_win_count = math.round(math.sum(dip_win_num, stats_lookback_bars))
-euphoria_sell_win_count = math.round(math.sum(euphoria_win_num, stats_lookback_bars))
-strong_sell_win_count = math.round(math.sum(strong_sell_win_num, stats_lookback_bars))
-sell_hedge_win_count = math.round(math.sum(sell_hedge_win_num, stats_lookback_bars))
+crash_buy_evaluated_count = math.round(math.sum(crash_eval_num, crash_stats_window))
+strong_buy_evaluated_count = math.round(math.sum(strong_eval_num, strong_stats_window))
+buy_dip_evaluated_count = math.round(math.sum(dip_eval_num, dip_stats_window))
+euphoria_sell_evaluated_count = math.round(math.sum(euphoria_eval_num, crash_stats_window))
+strong_sell_evaluated_count = math.round(math.sum(strong_sell_eval_num, strong_stats_window))
+sell_hedge_evaluated_count = math.round(math.sum(sell_hedge_eval_num, dip_stats_window))
+crash_buy_win_count = math.round(math.sum(crash_win_num, crash_stats_window))
+strong_buy_win_count = math.round(math.sum(strong_win_num, strong_stats_window))
+buy_dip_win_count = math.round(math.sum(dip_win_num, dip_stats_window))
+euphoria_sell_win_count = math.round(math.sum(euphoria_win_num, crash_stats_window))
+strong_sell_win_count = math.round(math.sum(strong_sell_win_num, strong_stats_window))
+sell_hedge_win_count = math.round(math.sum(sell_hedge_win_num, dip_stats_window))
 
 // 计算平均收益
 crash_buy_avg_return = crash_buy_evaluated_count > 0 ? crash_buy_return_sum / crash_buy_evaluated_count : 0.0
@@ -688,85 +741,38 @@ euphoria_sell_win_rate = euphoria_sell_evaluated_count > 0 ? euphoria_sell_win_c
 strong_sell_win_rate = strong_sell_evaluated_count > 0 ? strong_sell_win_count * 100.0 / strong_sell_evaluated_count : 0.0
 sell_hedge_win_rate = sell_hedge_evaluated_count > 0 ? sell_hedge_win_count * 100.0 / sell_hedge_evaluated_count : 0.0
 
-// 最终信号翻译
-signal_txt = ""
+// Current setup is distinct from a fresh crossing event; the same gates explain both.
+// 当前市场状态与新触发事件不同；共用门控，冷却和穿越时序在提示中说明。
+signal_txt = "⏸ NEUTRAL"
 signal_col = color.gray
-signal_emoji = ""
-
-if score >= 6
-    signal_txt := "🚨 CRASH BUY"
-    signal_col := color.new(#00FF00, 0)
-    signal_emoji := "🚨"
-else if score >= 5
-    signal_txt := "🟢 STRONG BUY"
-    signal_col := color.green
-    signal_emoji := "🟢"
-else if score >= min_score_buy
-    if vix_regime == 3
-        signal_txt := "✋ WAIT (Vol)"
-        signal_col := color.gray
-        signal_emoji := "✋"
-    else if use_momentum_confirm and not is_buy_dip_momentum_ok
-        signal_txt := "✋ WAIT (Mom)"
-        signal_col := color.gray
-        signal_emoji := "✋"
-    else if not has_core_panic_confirmation
-        signal_txt := "✋ WAIT (Core)"
-        signal_col := color.gray
-        signal_emoji := "✋"
-    else
-        signal_txt := "🟡 BUY DIP"
-        signal_col := color.lime
-        signal_emoji := "🟡"
-else if score <= -6
-    signal_txt := "🔥 EUPHORIA"
-    signal_col := color.new(#FF0000, 0)
-    signal_emoji := "🔥"
-else if score <= -5
-    if sell_requires_core_confirmation and not has_core_euphoria_confirmation
-        signal_txt := "✋ HOLD (Core)"
-        signal_col := color.gray
-        signal_emoji := "✋"
-    else
-        signal_txt := "🔴 STRONG SELL"
-        signal_col := color.red
-        signal_emoji := "🔴"
-else if score <= -2
-    if vix_regime == 1
-        signal_txt := "☕ HOLD (Vol)"
-        signal_col := color.gray
-        signal_emoji := "☕"
-    else if use_momentum_confirm and not is_sell_hedge_momentum_ok
-        signal_txt := "✋ HOLD (Mom)"
-        signal_col := color.gray
-        signal_emoji := "✋"
-    else if sell_requires_core_confirmation and not has_core_euphoria_confirmation
-        signal_txt := "✋ HOLD (Core)"
-        signal_col := color.gray
-        signal_emoji := "✋"
-    else
-        signal_txt := "🟠 SELL/HEDGE"
-        signal_col := color.orange
-        signal_emoji := "🟠"
-else
-    signal_txt := "⏸ NEUTRAL"
-    signal_col := color.gray
-    signal_emoji := "⏸"
-
-// 熊市特殊提示
-if use_trend_filter and not is_bull_market and score >= min_score_buy and score < 5
+if setup_block_reason == 1
+    signal_txt := "DATA N/A / 数据不足"
+else if setup_block_reason == 6
+    signal_txt := "WAIT Trend / 趋势缺失"
+else if setup_block_reason == 7
     signal_txt := "🚫 NO TRADE"
-    signal_col := color.gray
-    signal_emoji := "🚫"
+else if setup_block_reason > 0
+    block_label = setup_block_reason == 2 ? "Vol/波动" : setup_block_reason == 3 ? "Mom/动量" : setup_block_reason == 4 ? "Z/结构" : "Core/核心"
+    signal_txt := (score >= min_score_buy ? "WAIT " : "HOLD ") + block_label
+else if buy_setup_level > 0
+    signal_txt := buy_setup_level == 3 ? "🚨 CRASH BUY" : buy_setup_level == 2 ? "🟢 STRONG BUY" : "🟡 BUY DIP"
+    signal_col := buy_setup_level == 3 ? color.new(#00FF00, 0) : buy_setup_level == 2 ? color.green : color.lime
+else if sell_setup_level > 0
+    signal_txt := sell_setup_level == 3 ? "🔥 EUPHORIA" : sell_setup_level == 2 ? "🔴 STRONG SELL" : "🟠 SELL/HEDGE"
+    signal_col := sell_setup_level == 3 ? color.new(#FF0000, 0) : sell_setup_level == 2 ? color.red : color.orange
+signal_source_txt = use_completed_chart_source ? "COMPLETED D / 已完成日线" : "DEVELOPING D / 发展中日线"
+structure_date_txt = na(structure_day) ? "N/A" : str.tostring(structure_day, "#")
+score_details = signal_source_txt + "\nStructure day / 结构日期: " + structure_date_txt + "\n" + (data_ready ? factor_breakdown : "Missing data or warming up / 数据缺失或预热中") + "\nDate identifies the structure bar, not feed publication time / 日期表示结构K线，不代表行情发布时间"
+setup_details = "Current setup / 当前市场状态\n" + signal_txt + "\nSignals require a new threshold crossing and applicable cooldown / 新信号还需穿越阈值并通过对应冷却\nBUY=买入侧 SELL=卖出侧 WAIT=等待 HOLD=暂缓卖出 NEUTRAL=中性 NO TRADE=趋势过滤\nSignal VIX / 门控VIX: " + str.tostring(signal_vix, "#.#")
 
 // ========== 7. 绘图 ==========
-bgcolor(contango_pct > 0 ? color.new(color.green, 95) : color.new(color.red, 92))
+bgcolor(na(contango_daily) ? na : contango_daily > 0 ? color.new(color.green, 95) : color.new(color.red, 92))
 
 col_z = z >= 0 ? color.from_gradient(z, 0, 3, color.new(color.blue, 40), color.new(color.blue, 10)) : 
                  color.from_gradient(z, -3, 0, color.new(color.red, 10), color.new(color.orange, 40))
 
 plot(show_z ? z : na, color=col_z, title="Term Struct Z", linewidth=2)
-plot(show_skew ? scaled_skew : na, color=color.new(color.fuchsia, 40), title="SKEW (Scaled)", linewidth=1)
+plot(show_skew ? (use_completed_chart_source ? (confirmed_skew_d - 100) / 10 : scaled_skew) : na, color=color.new(color.fuchsia, 40), title="SKEW (Scaled)", linewidth=1)
 
 hline(0, "Zero", color=color.gray, linestyle=hline.style_solid)
 mid_hline_style = mid_line_style == "Solid" ? hline.style_solid : mid_line_style == "Dashed" ? hline.style_dashed : hline.style_dotted
@@ -776,8 +782,8 @@ plot(thresh_strong, "Upper", color=color.new(color.gray, 50), style=plot.style_l
 plot(-thresh_strong, "Lower", color=color.new(color.gray, 50), style=plot.style_line)
 
 // 使用滚动最大值的成交量可视化
-scaled_vol = not na(vx1_vol) and vol_max_rolling > 0 ? ((vx1_vol * vol_visual_boost) / vol_max_rolling) * 1.8 - 3.8 : na
-plot(show_volume ? scaled_vol : na, color=col_vol, title="Smart Volume", style=plot.style_columns, linewidth=2)
+daily_vol_color = is_vol_spike_daily ? color.new(color.yellow, 30) : is_vol_high_daily ? color.new(color.aqua, 60) : color.new(color.gray, 90)
+plot(show_volume ? scaled_vol_daily : na, color=daily_vol_color, title="Smart Volume / 日线成交量", style=plot.style_columns, linewidth=2)
 
 // ========== 8. 三级信号图表标签 (v7.0 新增) ==========
 plotshape(final_crash_buy ? -thresh_strong - 0.3 : na, title="Crash Buy Signal", location=location.absolute, style=shape.labelup, color=color.new(#00FF00, 0), text="🚨", textcolor=color.white, size=size.small)
@@ -802,10 +808,17 @@ c_label  = color.rgb(136, 136, 136)    // #888888 标签灰色
 c_value  = color.rgb(255, 255, 255)    // #ffffff 数值白色
 
 // 根据信号动态选择背景色
-signal_bg = score >= 5 ? c_buy_bg : score <= -5 ? c_sell_bg : c_row
+signal_bg = not signal_data_ready ? c_row : score >= 5 ? c_buy_bg : score <= -5 ? c_sell_bg : c_row
 
-// v7.8: 仅在预览模式（非实盘安全模式）时显示重绘警告
+// 表头标注实际评分来源；安全开关不等于已完成日线。
+// Header identifies the actual Score source; Safe Mode is not completed-day confirmation.
 is_preview_mode = not trading_safe_mode
+panel_spx_emoji = use_completed_chart_source ? (not confirmed_spx_ready_d ? "⚪" : confirmed_spx_bull_d ? "🟢" : "🔴") : spx_emoji
+panel_ndx_emoji = use_completed_chart_source ? (not confirmed_ndx_ready_d ? "⚪" : confirmed_ndx_bull_d ? "🟢" : "🔴") : ndx_emoji
+panel_rut_emoji = use_completed_chart_source ? (not confirmed_rut_ready_d ? "⚪" : confirmed_rut_bull_d ? "🟢" : "🔴") : rut_emoji
+display_vix_regime = na(vix_display) or vix_display <= 0 ? 0 : vix_display < vix_low_thresh ? 1 : vix_display > vix_high_thresh ? 3 : 2
+display_vix_regime_txt = display_vix_regime == 0 ? "N/A" : display_vix_regime == 1 ? "LOW" : display_vix_regime == 3 ? "HIGH" : "NORM"
+display_vix_color = display_vix_regime == 1 ? color.lime : display_vix_regime == 3 ? color.red : color.silver
 
 // Mobile: 2行, Full: 16行
 panel_rows = is_mobile ? 2 : 16
@@ -817,26 +830,26 @@ if show_table and barstate.islast
         // Mobile Mode: 极简2行
         // ═══════════════════════════════════════════════════════════════════
         // Row 0: 信号 + 分数
-        table.cell(panel, 0, 0, signal_txt, bgcolor=signal_bg, text_color=signal_col, text_halign=text.align_left, text_size=t_size)
-        table.cell(panel, 1, 0, str.tostring(score, "+#.#;-#.#"), bgcolor=signal_bg, text_color=signal_col, text_halign=text.align_right, text_size=t_size)
+        table.cell(panel, 0, 0, signal_txt, bgcolor=signal_bg, text_color=signal_col, text_halign=text.align_left, text_size=t_size, tooltip=setup_details)
+        table.cell(panel, 1, 0, str.tostring(score, "+#.#;-#.#"), bgcolor=signal_bg, text_color=signal_col, text_halign=text.align_right, text_size=t_size, tooltip=score_details)
         
         // Row 1: Alert Mode + VIX数值 (v7.11)
         vix_regime_str = alert_mode_panel
         vix_val_str = str.tostring(vix_display, "#.#") + (trading_safe_mode ? "ʳᵗ" : "")
         table.cell(panel, 0, 1, vix_regime_str, bgcolor=c_row, text_color=is_alert_preview_mode ? color.orange : color.aqua, text_halign=text.align_left, text_size=t_size)
-        table.cell(panel, 1, 1, vix_val_str, bgcolor=c_row, text_color=vix_regime_color, text_halign=text.align_right, text_size=t_size)
+        table.cell(panel, 1, 1, vix_val_str, bgcolor=c_row, text_color=display_vix_color, text_halign=text.align_right, text_size=t_size, tooltip="Live VIX display / 实时VIX显示\nSignal gate / 信号门控: " + str.tostring(signal_vix, "#.#"))
     else
         // ═══════════════════════════════════════════════════════════════════
         // Full Mode: 分组布局 + 进度条
         // ═══════════════════════════════════════════════════════════════════
         
         // --- Row 0: 标题栏 ---
-        mode_tag = is_preview_mode ? "⚠️PREVIEW" : "🛡️SAFE"
+        mode_tag = use_completed_chart_source ? "CLOSED D / 已完成" : is_preview_mode ? "⚠️PREVIEW / 预览" : "LIVE D / 发展中"
         table.cell(panel, 0, 0, "VIX Term Pro", bgcolor=c_header, text_color=c_value, text_halign=text.align_left, text_size=t_size)
-        table.cell(panel, 1, 0, mode_tag, bgcolor=c_header, text_color=is_preview_mode ? color.orange : color.lime, text_halign=text.align_right, text_size=t_size)
+        table.cell(panel, 1, 0, mode_tag, bgcolor=c_header, text_color=is_preview_mode ? color.orange : color.lime, text_halign=text.align_right, text_size=t_size, tooltip=score_details)
         
         // --- Row 1: 信号（动态高亮背景）---
-        table.cell(panel, 0, 1, signal_txt, bgcolor=signal_bg, text_color=signal_col, text_halign=text.align_left, text_size=t_size)
+        table.cell(panel, 0, 1, signal_txt, bgcolor=signal_bg, text_color=signal_col, text_halign=text.align_left, text_size=t_size, tooltip=setup_details)
         table.cell(panel, 1, 1, "", bgcolor=signal_bg, text_color=c_value, text_size=t_size)
         
         // --- Row 2: 进度条 + 分数 ---
@@ -844,32 +857,32 @@ if show_table and barstate.islast
         score_display = str.tostring(score, "+#.#;-#.#")
         bar_color = score >= 5 ? color.lime : score <= -5 ? color.red : color.silver
         table.cell(panel, 0, 2, score_bar, bgcolor=c_row, text_color=bar_color, text_halign=text.align_left, text_size=t_size)
-        table.cell(panel, 1, 2, score_display, bgcolor=c_row, text_color=bar_color, text_halign=text.align_right, text_size=t_size)
+        table.cell(panel, 1, 2, score_display, bgcolor=c_row, text_color=bar_color, text_halign=text.align_right, text_size=t_size, tooltip=score_details)
         
         // --- Row 3: MARKET 分组标题 ---
         table.cell(panel, 0, 3, "MARKET", bgcolor=c_group, text_color=c_label, text_halign=text.align_left, text_size=size.tiny)
         table.cell(panel, 1, 3, "", bgcolor=c_group, text_color=c_label, text_size=size.tiny)
         
         // --- Row 4: 三指数趋势 ---
-        trend_compact = spx_emoji + " " + ndx_emoji + " " + rut_emoji
-        table.cell(panel, 0, 4, trend_compact, bgcolor=c_row, text_color=trend_color, text_halign=text.align_left, text_size=t_size)
+        trend_compact = panel_spx_emoji + " " + panel_ndx_emoji + " " + panel_rut_emoji
+        table.cell(panel, 0, 4, trend_compact, bgcolor=c_row, text_color=c_value, text_halign=text.align_left, text_size=t_size, tooltip="Trend follows the selected Score source; grey means unavailable / 趋势跟随评分所选来源，灰色表示缺失")
         table.cell(panel, 1, 4, "SPX NDX RUT", bgcolor=c_row, text_color=c_label, text_halign=text.align_right, text_size=size.tiny)
         
         // --- Row 5: VIX Regime (v7.9: 使用实时VIX) ---
-        vix_full_display = vix_regime_emoji + " " + vix_regime_txt
+        vix_full_display = "VIX " + display_vix_regime_txt
         vix_val_with_rt = str.tostring(vix_display, "#.#") + (trading_safe_mode ? " ʳᵗ" : "")
-        table.cell(panel, 0, 5, vix_full_display, bgcolor=c_row, text_color=vix_regime_color, text_halign=text.align_left, text_size=t_size)
-        table.cell(panel, 1, 5, vix_val_with_rt, bgcolor=c_row, text_color=vix_regime_color, text_halign=text.align_right, text_size=t_size)
+        table.cell(panel, 0, 5, vix_full_display, bgcolor=c_row, text_color=display_vix_color, text_halign=text.align_left, text_size=t_size)
+        table.cell(panel, 1, 5, vix_val_with_rt, bgcolor=c_row, text_color=display_vix_color, text_halign=text.align_right, text_size=t_size, tooltip="Live VIX display / 实时VIX显示\nSignal gate / 信号门控: " + str.tostring(signal_vix, "#.#"))
         
         // --- Row 6: Alert Mode ---
         table.cell(panel, 0, 6, "ALERT MODE", bgcolor=c_row, text_color=c_label, text_halign=text.align_left, text_size=size.tiny)
         table.cell(panel, 1, 6, alert_mode_panel, bgcolor=c_row, text_color=is_alert_preview_mode ? color.orange : color.aqua, text_halign=text.align_right, text_size=t_size)
         
         // --- Row 7: Volume Status ---
-        vol_ratio = not na(vx1_vol) and vol_ma > 0 ? vx1_vol / vol_ma : 0
-        vol_txt = is_vol_spike ? "🔥 SPIKE" : is_vol_high ? "⚡ HIGH" : "◦ NORM"
-        vol_col = is_vol_spike ? color.yellow : is_vol_high ? color.aqua : color.silver
-        table.cell(panel, 0, 7, vol_txt, bgcolor=c_row, text_color=vol_col, text_halign=text.align_left, text_size=t_size)
+        vol_ratio = vol_ratio_daily
+        vol_txt = na(vol_ratio_daily) ? "N/A / 无数据" : is_vol_spike_daily ? "🔥 SPIKE / 爆量" : is_vol_high_daily ? "⚡ HIGH / 高量" : "◦ NORM / 正常"
+        vol_col = is_vol_spike_daily ? color.yellow : is_vol_high_daily ? color.aqua : color.silver
+        table.cell(panel, 0, 7, vol_txt, bgcolor=c_row, text_color=vol_col, text_halign=text.align_left, text_size=t_size, tooltip="Daily volume window, same source as Score / 日线成交量窗口，与评分同源")
         table.cell(panel, 1, 7, str.tostring(vol_ratio, "#.#") + "x", bgcolor=c_row, text_color=vol_col, text_halign=text.align_right, text_size=t_size)
         
         // --- Row 8: STRUCTURE 分组标题 ---
@@ -883,22 +896,22 @@ if show_table and barstate.islast
         table.cell(panel, 1, 9, z_dir, bgcolor=c_row, text_color=z_momentum_bullish ? color.lime : z_momentum_bearish ? color.orange : color.silver, text_halign=text.align_right, text_size=t_size)
         
         // --- Row 10: Contango ---
-        contango_emoji = contango_pct < 0 ? "⚠️" : "✓"
-        contango_col = contango_pct < 0 ? color.red : color.lime
+        contango_emoji = na(contango_daily) ? "" : contango_daily < 0 ? "⚠️" : "✓"
+        contango_col = na(contango_daily) ? c_label : contango_daily < 0 ? color.red : color.lime
         table.cell(panel, 0, 10, "Contango", bgcolor=c_row, text_color=c_label, text_halign=text.align_left, text_size=t_size)
-        table.cell(panel, 1, 10, contango_emoji + str.tostring(contango_pct, "#.#") + "%", bgcolor=c_row, text_color=contango_col, text_halign=text.align_right, text_size=t_size)
+        table.cell(panel, 1, 10, na(contango_daily) ? "N/A" : contango_emoji + str.tostring(contango_daily, "#.#") + "%", bgcolor=c_row, text_color=contango_col, text_halign=text.align_right, text_size=t_size)
         
         // --- Row 11: STATS 分组标题 ---
-        stats_header = is_stats_daily_chart ? "STATS (" + str.tostring(stats_lookback_years) + "Y)" : "STATS (1D)"
+        stats_header = is_stats_eligible_chart ? "STATS (" + str.tostring(stats_lookback_years) + "Y)" : "STATS (1D)"
         table.cell(panel, 0, 11, stats_header, bgcolor=c_group, text_color=c_label, text_halign=text.align_left, text_size=size.tiny)
         table.cell(panel, 1, 11, "", bgcolor=c_group, text_color=c_label, text_size=size.tiny)
         
         // --- Row 12: CRASH + STRONG 统计 ---
         if show_signal_stats
-            if not is_stats_daily_chart
-                table.cell(panel, 0, 12, "1D ONLY", bgcolor=c_row, text_color=c_label, text_halign=text.align_left, text_size=t_size)
+            if not is_stats_eligible_chart
+                table.cell(panel, 0, 12, "US 1D / 美股日线", bgcolor=c_row, text_color=c_label, text_halign=text.align_left, text_size=t_size)
                 table.cell(panel, 1, 12, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
-                table.cell(panel, 0, 13, "Use daily chart", bgcolor=c_row, text_color=c_label, text_halign=text.align_left, text_size=t_size)
+                table.cell(panel, 0, 13, is_stats_daily_chart ? "Calendar / 日历不符" : "Use 1D / 请用日线", bgcolor=c_row, text_color=c_label, text_halign=text.align_left, text_size=t_size)
                 table.cell(panel, 1, 13, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
                 table.cell(panel, 0, 14, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
                 table.cell(panel, 1, 14, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
@@ -911,22 +924,22 @@ if show_table and barstate.islast
                 stats_sell_left = f_stats_cell("🔥", euphoria_sell_evaluated_count, euphoria_sell_win_rate, euphoria_sell_avg_return, stats_ready)
                 stats_sell_right = f_stats_cell("🔴", strong_sell_evaluated_count, strong_sell_win_rate, strong_sell_avg_return, stats_ready)
                 stats_hedge = f_stats_cell("🟠", sell_hedge_evaluated_count, sell_hedge_win_rate, sell_hedge_avg_return, stats_ready)
-                crash_col = stats_ready ? (crash_buy_avg_return >= 0 ? color.lime : color.red) : c_label
-                strong_col = stats_ready ? (strong_buy_avg_return >= 0 ? color.lime : color.red) : c_label
-                dip_col = stats_ready ? (buy_dip_avg_return >= 0 ? color.lime : color.red) : c_label
-                euphoria_col = stats_ready ? (euphoria_sell_avg_return <= 0 ? color.lime : color.red) : c_label
-                sell_strong_col = stats_ready ? (strong_sell_avg_return <= 0 ? color.lime : color.red) : c_label
-                hedge_col = stats_ready ? (sell_hedge_avg_return <= 0 ? color.lime : color.red) : c_label
+                crash_col = stats_ready and crash_buy_evaluated_count > 0 ? (crash_buy_avg_return >= 0 ? color.lime : color.red) : c_label
+                strong_col = stats_ready and strong_buy_evaluated_count > 0 ? (strong_buy_avg_return >= 0 ? color.lime : color.red) : c_label
+                dip_col = stats_ready and buy_dip_evaluated_count > 0 ? (buy_dip_avg_return >= 0 ? color.lime : color.red) : c_label
+                euphoria_col = stats_ready and euphoria_sell_evaluated_count > 0 ? (euphoria_sell_avg_return <= 0 ? color.lime : color.red) : c_label
+                sell_strong_col = stats_ready and strong_sell_evaluated_count > 0 ? (strong_sell_avg_return <= 0 ? color.lime : color.red) : c_label
+                hedge_col = stats_ready and sell_hedge_evaluated_count > 0 ? (sell_hedge_avg_return <= 0 ? color.lime : color.red) : c_label
                 table.cell(panel, 0, 12, stats_left, bgcolor=c_row, text_color=crash_col, text_halign=text.align_left, text_size=t_size)
                 table.cell(panel, 1, 12, stats_right, bgcolor=c_row, text_color=strong_col, text_halign=text.align_right, text_size=t_size)
             
                 // --- Row 13: BUY DIP 统计 ---
                 table.cell(panel, 0, 13, stats_dip, bgcolor=c_row, text_color=dip_col, text_halign=text.align_left, text_size=t_size)
-                table.cell(panel, 1, 13, stats_ready ? "N=Evaluated" : "Need full window", bgcolor=c_row, text_color=c_label, text_halign=text.align_right, text_size=size.tiny)
+                table.cell(panel, 1, 13, stats_ready ? "N=Closed / 已完成" : "Warmup / 预热中", bgcolor=c_row, text_color=c_label, text_halign=text.align_right, text_size=size.tiny)
                 table.cell(panel, 0, 14, stats_sell_left, bgcolor=c_row, text_color=euphoria_col, text_halign=text.align_left, text_size=t_size)
                 table.cell(panel, 1, 14, stats_sell_right, bgcolor=c_row, text_color=sell_strong_col, text_halign=text.align_right, text_size=t_size)
                 table.cell(panel, 0, 15, stats_hedge, bgcolor=c_row, text_color=hedge_col, text_halign=text.align_left, text_size=t_size)
-                table.cell(panel, 1, 15, stats_ready ? "Win = Ref<=0" : "Need full window", bgcolor=c_row, text_color=c_label, text_halign=text.align_right, text_size=size.tiny)
+                table.cell(panel, 1, 15, stats_ready ? "Win胜=Ref<=0" : "Warmup / 预热中", bgcolor=c_row, text_color=c_label, text_halign=text.align_right, text_size=size.tiny)
         else
             table.cell(panel, 0, 12, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
             table.cell(panel, 1, 12, "", bgcolor=c_row, text_color=c_label, text_size=t_size)
@@ -950,6 +963,10 @@ if show_table and barstate.islast
 varip int buy_alert_level_sent = 0
 varip int sell_alert_level_sent = 0
 
+// 显式实现 Once Per Bar，避免 alert() 静默限频后误记为已发送；买卖共用同一K线配额。
+// Enforce Once Per Bar explicitly so a transport-suppressed call never updates sent state; both sides share one quota.
+varip bool alert_dispatched_this_bar = false
+
 // varip: 实时bar回滚安全。alert 发出后即刻记账，避免同一实时bar或后续bar重复重放。
 varip int last_buy_alert_bar = 0
 varip int last_sell_alert_bar = 0
@@ -970,6 +987,7 @@ if barstate.isnew
     prev_bar_sell_level := sell_alert_level_sent
     buy_alert_level_sent := 0
     sell_alert_level_sent := 0
+    alert_dispatched_this_bar := false
     if has_new_chart_day
         buy_day_latch_level := 0
         sell_day_latch_level := 0
@@ -978,7 +996,7 @@ if barstate.isnew
 
 // VIX Regime 自适应冷却：高波动减半，低波动加倍
 // v7.13 (M3): math.max 防止 base=1 时整除截断得 0 / Guard: int division truncates, base=1 must not yield 0 cooldown
-adaptive_cooldown = vix_regime == 3 ? math.max(1, math.round(alert_cooldown_base / 2)) : vix_regime == 1 ? alert_cooldown_base * 2 : alert_cooldown_base
+adaptive_cooldown = signal_vix_regime == 3 ? math.max(1, math.round(alert_cooldown_base / 2)) : signal_vix_regime == 1 ? alert_cooldown_base * 2 : alert_cooldown_base
 
 if enable_smart_alert
     // ===== 买入信号聚合 =====
@@ -997,7 +1015,7 @@ if enable_smart_alert
     should_latch_extended_buy = extended_preview_bar and is_new_buy and is_buy_day_latch_upgrade
     should_emit_buy = is_alert_preview_mode ? (allow_alert_now and is_new_buy and is_buy_day_latch_upgrade and (bar_index - last_buy_alert_bar > adaptive_cooldown)) : (confirmed_emit_now and current_buy_level > 0 and pending_confirmed_structure_day != emitted_confirmed_buy_day)
     
-    if should_emit_buy
+    if should_emit_buy and (alert_freq_mode == "Real-time" or not alert_dispatched_this_bar)
         // 构建消息头 (含等级标签 + 升级标记)
         upgrade_marker = current_buy_level > prev_buy_level_ref and prev_buy_level_ref > 0 ? "⬆️" : ""
         level_txt = current_buy_level == 3 ? "[Lv3🔥]" : current_buy_level == 2 ? "[Lv2]" : "[Lv1]"
@@ -1015,14 +1033,15 @@ if enable_smart_alert
         msg := msg + str.format("| Score:{0} Z:{1,number,#.##} VIX:{2,number,#.#}({3}) {4}", 
             is_alert_preview_mode ? score : pending_confirmed_score,
             is_alert_preview_mode ? z : pending_confirmed_z,
-            is_alert_preview_mode ? vix : pending_confirmed_vix,
-            is_alert_preview_mode ? vix_regime_txt : pending_confirmed_vix_regime_txt,
-            is_alert_preview_mode ? trend_status_txt : pending_confirmed_trend_status_txt)
+            is_alert_preview_mode ? signal_vix : pending_confirmed_vix,
+            is_alert_preview_mode ? signal_vix_regime_txt : pending_confirmed_vix_regime_txt,
+            is_alert_preview_mode ? signal_trend_txt : pending_confirmed_trend_status_txt)
         msg := msg + " | " + alert_mode_desc
         if is_hybrid_alert_mode
             msg := msg + " hybrid daily+chart"
         
-        alert(msg, alert_freq)
+        alert(msg, alert.freq_all)
+        alert_dispatched_this_bar := true
         if is_alert_preview_mode
             last_buy_alert_bar := bar_index
             buy_day_latch_level := current_buy_level
@@ -1054,7 +1073,7 @@ if enable_smart_alert
     should_latch_extended_sell = extended_preview_bar and is_new_sell and is_sell_day_latch_upgrade
     should_emit_sell = is_alert_preview_mode ? (allow_alert_now and is_new_sell and is_sell_day_latch_upgrade and (bar_index - last_sell_alert_bar > adaptive_cooldown)) : (confirmed_emit_now and current_sell_level > 0 and pending_confirmed_structure_day != emitted_confirmed_sell_day)
     
-    if should_emit_sell
+    if should_emit_sell and (alert_freq_mode == "Real-time" or not alert_dispatched_this_bar)
         // 构建消息头 (含等级标签 + 升级标记)
         upgrade_marker = current_sell_level > prev_sell_level_ref and prev_sell_level_ref > 0 ? "⬆️" : ""
         level_txt = current_sell_level == 3 ? "[Lv3🔥]" : current_sell_level == 2 ? "[Lv2]" : "[Lv1]"
@@ -1071,13 +1090,14 @@ if enable_smart_alert
         msg := msg + str.format("| Score:{0} Z:{1,number,#.##} SKEW:{2,number,#} {3}", 
             is_alert_preview_mode ? score : pending_confirmed_score,
             is_alert_preview_mode ? z : pending_confirmed_z,
-            is_alert_preview_mode ? skew : pending_confirmed_skew,
-            is_alert_preview_mode ? trend_status_txt : pending_confirmed_trend_status_txt)
+            is_alert_preview_mode ? signal_skew : pending_confirmed_skew,
+            is_alert_preview_mode ? signal_trend_txt : pending_confirmed_trend_status_txt)
         msg := msg + " | " + alert_mode_desc
         if is_hybrid_alert_mode
             msg := msg + " hybrid daily+chart"
         
-        alert(msg, alert_freq)
+        alert(msg, alert.freq_all)
+        alert_dispatched_this_bar := true
         if is_alert_preview_mode
             last_sell_alert_bar := bar_index
             sell_day_latch_level := current_sell_level

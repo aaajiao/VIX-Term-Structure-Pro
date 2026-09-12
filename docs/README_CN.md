@@ -1,4 +1,4 @@
-# VIX Term Structure Pro v7.13
+# VIX Term Structure Pro v7.14
 
 [![TradingView](https://img.shields.io/badge/TradingView-Indicator-blue?logo=tradingview)](https://www.tradingview.com/scripts/)
 [![Pine Script](https://img.shields.io/badge/Pine%20Script-v6-brightgreen)](https://www.tradingview.com/pine-script-reference/v6/)
@@ -20,7 +20,7 @@ VIX Term Structure Pro 是一个基于 TradingView Pine Script v6 的波动率�
 
 - 主文件：`vix.pine`
 - Pine 版本：`//@version=6`
-- 指标标题：`VIX Term Structure Pro [v7.13]`
+- 指标标题：`VIX Term Structure Pro [v7.14]`
 - 历史执行窗口：`calc_bars_count=5000`
 - 主要使用场景：TradingView 上的 `SPY`、`QQQ`、`IWM` 及相关指数图表
 
@@ -33,6 +33,7 @@ VIX Term Structure Pro 是一个基于 TradingView Pine Script v6 的波动率�
 | `docs/README_CN.md` | 中文文档 |
 | `chart_guide.png` | 仪表盘 / 图表示意图 |
 | `zscore_guide.png` | Z-Score 解释图 |
+| `tests/` | Python 回归模型与 Pine 源码连接检查；不是 Pine 编译器 |
 
 ## 指标是怎么工作的
 
@@ -51,6 +52,8 @@ VIX Term Structure Pro 是一个基于 TradingView Pine Script v6 的波动率�
 - 可选周线 MTF 对齐
 
 当启用自适应阈值时，PCR 的百分位阈值会直接进入 score。启用 VVIX 后，所选的 `VVIX Threshold Mode` 也会直接进入 score。
+
+所有必需结构输入与已启用因子都必须有有效数据和足够历史。条件不满足时，`Score` 显示不可用（`N/A`），不产生信号；缺失数据不会当作中性因子计分。未启用的可选 VVIX 或 MTF 不会阻止就绪。智能成交量数值及其评分贡献与 `Score` 来自同一套日线数据。
 
 趋势不进入 score。趋势只影响：
 
@@ -73,9 +76,11 @@ VIX Term Structure Pro 是一个基于 TradingView Pine Script v6 的波动率�
 
 自动识别规则：
 
-- `QQQ` / `NDX` / `NQ` 类图表使用 `NASDAQ:NDX`
-- `IWM` / `RUT` / `RTY` 类图表使用 `TVC:RUT`
+- 精确代码 `QQQ`、`QQQM`、`TQQQ`、`SQQQ`、`QLD`、`QID`、`NDX`，以及根代码为 `NQ` 或 `MNQ` 的期货，使用 `NASDAQ:NDX`
+- 精确代码 `IWM`、`UWM`、`TWM`、`TNA`、`TZA`、`RUT`，以及根代码为 `RTY` 或 `M2K` 的期货，使用 `TVC:RUT`
 - 其他图表默认使用 `SP:SPX`
+
+识别使用 ETF/指数的精确代码与期货根代码，不使用任意子串；例如 `CNQ` 仍使用 `SP:SPX`。
 
 ## 信号模型
 
@@ -84,7 +89,7 @@ VIX Term Structure Pro 是一个基于 TradingView Pine Script v6 的波动率�
 | 信号 | 分数区间 | 含义 |
 |:--|:--|:--|
 | `🚨 CRASH BUY` | `>= 6` | 极端恐慌 |
-| `🟢 STRONG BUY` | `>= 5` | 高质量买点 |
+| `🟢 STRONG BUY` | `>= 5` 且 `< 6` | 强买入结构 |
 | `🟡 BUY DIP` | `>= min_score_buy` 且 `< 5` | 较弱买点 |
 | `⏸ NEUTRAL` | 中性区间 | 暂无优势 |
 | `🟠 SELL/HEDGE` | `<= -2` 且 `> -5` | 对冲 / 降风险 |
@@ -97,13 +102,20 @@ VIX Term Structure Pro 是一个基于 TradingView Pine Script v6 的波动率�
 
 | 状态 | 含义 |
 |:--|:--|
-| `✋ WAIT (Vol)` | 买入分数达标，但波动区间过于危险 |
-| `✋ WAIT (Mom)` | 买入分数达标，但动量确认失败 |
-| `✋ WAIT (Core)` | 买入分数达标，但缺少核心恐慌确认 |
-| `☕ HOLD (Vol)` | 卖出分数达标，但当前波动区间不支持卖出 |
-| `✋ HOLD (Mom)` | 卖出分数达标，但动量确认失败 |
-| `✋ HOLD (Core)` | 卖出分数达标，但缺少核心贪婪确认 |
+| `DATA N/A / 数据不足` | 必需结构数据或因子预热未完成；所有信号被阻止 |
+| `WAIT Vol/波动` | 买入分数达标，但波动区间过于危险 |
+| `WAIT Mom/动量` | 买入分数达标，但动量确认失败 |
+| `WAIT Z/结构` | BUY DIP 分数达标，但 Z 尚未通过恐慌阈值 |
+| `WAIT Core/核心` | 买入分数达标，但缺少核心恐慌确认 |
+| `WAIT Trend / 趋势缺失` | BUY DIP 需要趋势过滤，但所选趋势参考数据不可用 |
+| `HOLD Vol/波动` | 卖出分数达标，但当前波动区间不支持卖出 |
+| `HOLD Mom/动量` | 卖出分数达标，但动量确认失败 |
+| `HOLD Core/核心` | 卖出分数达标，但缺少核心贪婪确认 |
 | `🚫 NO TRADE` | 启用趋势过滤后，买入侧在熊市趋势下被屏蔽 |
+
+仪表盘的状态原因与信号资格共用同一套门控。趋势数据缺失显示为灰色/未知，不会默认为牛市。BUY DIP 展示冷却只由最终有效信号消耗，因此被过滤的结构不会压掉下一次有效上穿。
+
+仪表盘的结构标签描述当前满足条件的评分区间。新的图表标记还需要首次穿越阈值，并通过适用的展示冷却；分数 tooltip 会说明这一差别。
 
 ### 卖出严格度
 
@@ -111,6 +123,8 @@ VIX Term Structure Pro 是一个基于 TradingView Pine Script v6 的波动率�
 
 - `Balanced (Legacy)`：保持之前的卖出 / 对冲过滤逻辑
 - `High Win-Rate`：`🔴 STRONG SELL` 和 `🟠 SELL/HEDGE` 必须通过核心贪婪确认
+
+`High Win-Rate` 是保留的选项名称，不代表已经用实证证明收益或胜率更高。
 
 核心贪婪确认满足以下任一即可：
 
@@ -120,27 +134,31 @@ VIX Term Structure Pro 是一个基于 TradingView Pine Script v6 的波动率�
 - contango 高于 `10%`
 - 可选 VVIX 偏冷
 
-### 两种“确认”概念
+### 确认与时序控制
 
-当前脚本里有两个不同层面的确认：
+当前脚本有三个时序控制项：
 
-- `Confirmed Signals Only`：控制图表上显示的信号是否等待当前 bar 收盘
-- `Alert Timing Mode`：控制智能提醒是“预览型”还是“确认型”
+- `Trading Safe Mode = ON`：避免历史未来数据泄漏；实时路径仍读取发展中的高周期数据，因此这些值可能继续变化，并在重载后重绘。OFF 允许历史预览显示当时尚不可知的数据。
+- `Confirmed Signals Only = ON`：盘中图表的 `Score`、Z 与图表信号使用上一完整日线结构快照；`1D` 及以上图表的信号等待当前图表 K 线收盘。OFF 保留发展中的日线图表路径。
+- `Alert Timing Mode`：单独选择智能提醒的数据与时序，使用预览或已完成日线结构。
 
-这两个概念是彼此独立的控制项。
+v7.14 保留默认值与输入选项字符串：Safe Mode 默认 ON，`Confirmed Signals Only` 默认 OFF，提醒时序默认 `Confirmed Daily Structure`。使用周线 MTF 时请保持 Safe Mode ON；下文的嵌套请求日历限制仍然适用。
 
 ### 统计模型
 
-滚动统计被有意限制在精确 `1D` 图表上。
+滚动统计要求精确 `1D` 图表、交易所时区为 `America/New_York`，且标的类型为股票、基金或指数。期货、加密货币、外汇、其他周期与其他交易所时区不显示胜率统计。
 
-- 非 `1D` 图表会显示 `1D ONLY`，而不是胜率数字
+- 不支持的图表显示周期/日历提示，而不是胜率数字
 - 只统计已确认的最终买入 / 卖出信号
-- `N` 表示已经完成收益评估的样本数，不是全部历史信号数
+- `N` 只统计持有期终点 K 线已收盘，且起点/终点参考价格均有效并严格为正的样本
+- 两个收益端点始终使用同一参考标的；手动参考缺失时不会退回 SPX
+- 窗口按信号入场日期覆盖最近 `回看年数 * 252` 个图表交易日；每种持有期使用 `回看 bars - 持有 bars` 长度的评估窗口
+- 已评估样本数为零的分级显示 `N/A`，不会显示容易误解的 `0%` 胜率
 - 买入胜率口径使用 `Ref > 0`
 - 卖出胜率口径使用 `Ref <= 0`
 - 卖出平均收益保持原始远期收益，数值越负代表顶部 / 对冲越有效
 - `Wxx%` 表示固定持有周期下、已完成样本的胜率
-- 统计最长只允许 `19` 年，因为 `19*252 + 60 = 4848`，仍在 `5000` bars 预算内
+- 统计仍以 `19` 年为上限，保持在 `5000` bars 执行/缓冲预算内；就绪判断累计实际执行且已收盘的 K 线
 
 ## 智能提醒
 
@@ -155,7 +173,8 @@ VIX Term Structure Pro 是一个基于 TradingView Pine Script v6 的波动率�
 
 这套默认值的含义是：
 
-- 确认型提醒基于上一完整结构日，并只在下一次常规时段机会发出一次
+- 盘中确认型提醒使用上一完整结构日，可在第一根常规时段 K 线发送；图表包含盘前 K 线也无需额外等待
+- `1D` 及以上图表保留当根收盘时发送的语义
 - 预览型提醒尽可能早发出
 - 消息本身会明确标注这次提醒属于哪一种时序
 
@@ -163,7 +182,7 @@ VIX Term Structure Pro 是一个基于 TradingView Pine Script v6 的波动率�
 
 | 模式 | 含义 |
 |:--|:--|
-| `Confirmed Daily Structure` | 对上一完整结构日做一次快照，并在下一次常规时段机会只发一次 |
+| `Confirmed Daily Structure` | 盘中：上一完整结构日，在首根符合条件的常规时段 K 线发一次；`1D` 及以上：图表 K 线收盘 |
 | `Preview / Earliest Possible` | 保留尽早触发的预览行为 |
 
 如果你在预览模式下把 `VIX Timeframe` 设为 `Chart`：
@@ -205,7 +224,7 @@ TradingView 的提醒运行在服务器侧快照上。只要你改了 alert timi
 Symbol: [Side] [Timing] [Level][Upgrade] → [Triggered Labels] | [Context] [Trend] | [Mode]
 
 SPY: 🟢 BUY [CONFIRMED] [Lv2] → 🟢STRONG | Score:5.2 Z:-2.1 VIX:19(NORM) 🟢SPX 🟢NDX 🔴RUT | Confirmed
-QQQ: 🟢 BUY [PREVIEW] [Lv1] → 🟡DIP | Score:4.0 Z:-1.8 VIX:28(HIGH) 🟢SPX 🟢NDX 🔴RUT | Hybrid preview hybrid daily+chart
+QQQ: 🟢 BUY [PREVIEW] [Lv1] → 🟡DIP | Score:4.0 Z:-1.8 VIX:20(NORM) 🟢SPX 🟢NDX 🔴RUT | Hybrid preview hybrid daily+chart
 ```
 
 提醒状态机当前包含：
@@ -216,6 +235,7 @@ QQQ: 🟢 BUY [PREVIEW] [Lv1] → 🟡DIP | Score:4.0 Z:-1.8 VIX:28(HIGH) 🟢SP
 - 预览模式加入日内方向锁：同方向同级别同一交易日最多一次，仅严格升级可再次提醒
 - 预览模式的 extended 时段新边缘也会消费这把方向锁，避免盘后 `1m` 重复刷提醒
 - 方向锁/冷却/发送记账改为回滚安全 `varip`，防止实时 bar 回滚造成重复触发
+- `Once Per Bar` 显式使用买卖两侧共用的一次发送配额；被拦截的第二次调用会保留观察记账，但不会错误推进实际发送冷却
 - 确认模式按结构日快照并只发一次
 - 预览模式保留以图表 bar 为单位的自适应冷却
 - 被冷却或时段策略拦截的信号会被直接丢弃，不会延后补发
@@ -237,11 +257,13 @@ QQQ: 🟢 BUY [PREVIEW] [Lv1] → 🟡DIP | Score:4.0 Z:-1.8 VIX:28(HIGH) 🟢SP
 
 | 区域 | 内容 |
 |:--|:--|
-| Header | 标题 + safe / preview 模式 |
+| Header | 标题 + `CLOSED D / 已完成`、`LIVE D / 发展中` 或 `⚠️PREVIEW / 预览` |
 | Signal | 当前信号 + 分数进度条 |
 | Market | SPX / NDX / RUT 趋势、VIX 区间、提醒模式、成交量 |
 | Structure | 期限结构 Z + contango |
-| Stats | 仅 `1D` 图表显示的买卖两侧已评估样本数、胜率和平均收益 |
+| Stats | 符合条件的 `1D` 图表显示买卖两侧已评估样本数、胜率和平均收益 |
+
+分数单元格的 tooltip 展示因子贡献、所选来源与当前评分对应的结构日期。日期标识计算周期，不是数据供应商的更新时间。Full 保持十六行；Mobile 保持两行及现有提醒模式行，由分数 tooltip 标明所选评分来源。
 
 ### 图形元素
 
@@ -273,14 +295,14 @@ QQQ: 🟢 BUY [PREVIEW] [Lv1] → 🟡DIP | Score:4.0 Z:-1.8 VIX:28(HIGH) 🟢SP
 
 ### Signal Confirmation
 
-- 图表信号是否按收盘确认
+- 盘中图表信号使用已完成日线，或在 `1D` 及以上等待图表收盘
 - 动量确认
 - 周线 MTF 确认
 - 信号展示冷却
 
 ### Statistics and Alerts
 
-- 滚动统计回看年数（`1-19Y`，且仅 `1D` 图表统计）
+- 滚动统计回看年数（`1-19Y`，仅符合条件的纽约时区股票/基金/指数 `1D` 图表统计）
 - 买卖对应分级复用的收益周期
 - 智能提醒时序模式
 - 盘后策略
@@ -308,7 +330,7 @@ QQQ: 🟢 BUY [PREVIEW] [Lv1] → 🟡DIP | Score:4.0 Z:-1.8 VIX:28(HIGH) 🟢SP
 - 如果你想看胜率统计，请使用精确 `1D` 图表
 - `Trading Safe Mode = ON`
 - `Alert Timing Mode = Confirmed Daily Structure`
-- 如果你想让顶部信号更少但更准，可用 `Sell Signal Strictness = High Win-Rate`
+- 使用 `Sell Signal Strictness = High Win-Rate` 可要求两个较低卖出分级通过核心贪婪确认
 - `Use Momentum Confirmation = ON`
 - `Use Weekly MTF Confirmation = OFF`，或只在你需要更严格过滤时开启
 
@@ -319,30 +341,42 @@ QQQ: 🟢 BUY [PREVIEW] [Lv1] → 🟡DIP | Score:4.0 Z:-1.8 VIX:28(HIGH) 🟢SP
 - 图表：`SPY` / `QQQ`
 - 周期：`15m` 或 `1h`
 - `VIX Timeframe = Chart`
+- 发展中的图表预览使用 `Confirmed Signals Only = OFF`；ON 则改用已完成日线图表信号，智能提醒时序仍可单独选择
 - `Alert Timing Mode = Preview / Earliest Possible`
 - 若你完全不想盘后提醒，可再加 `Regular Session Only`，这样 extended hours 的 `1m` 也会被拦住
 
 ## 验证流程
 
-这个仓库没有本地 Pine 编译器。
+这个仓库没有本地 Pine 编译器。在仓库根目录运行标准库回归测试：
 
-所有验证都要在 TradingView 完成：
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
+```
 
-1. 把 `vix.pine` 粘贴到 Pine Editor。
-2. 确认脚本能编译通过。
-3. 在 `SPY`、`QQQ`、`IWM` 上分别加载。
-4. 检查 `Full` 和 `Mobile` 两种仪表盘布局。
-5. 检查信号标签、买卖两侧 `1D` 统计输出、趋势过滤和统计参考指数是否符合预期。
-6. 分别测试：
-   - `Confirmed Daily Structure`
-   - `Preview / Earliest Possible`
-   - `Regular Session Only`
-   - 任何影响提醒时序或 session 的输入改动后，都要在 TradingView 里删掉旧提醒并重建
-7. 在 `Balanced (Legacy)` 与 `High Win-Rate` 之间切换，确认需要时会显示 `✋ HOLD (Core)`。
-8. 在 ETF 的盘中图上确认 `Confirmed Daily Structure` 对同一个完整结构日最多只发一次，不会在盘后 `1m` 上重复。
-9. 在预览模式下确认 `Regular Session Only` 仍能拦住 extended hours 的盘后提醒。
-10. 在预览模式 + `Allow if source confirms` + extended-hours `1m` 下，确认同方向同级别在同一交易日内不会重复提醒；只有 `Lv1 -> Lv2 -> Lv3` 升级时才会再次提醒。
-11. 在加密货币 `1D` 图表和上市时间较短标的的 `1D` 图表上，确认 score/Z 渲染正常（v7.13 从 SPX 日线网格取值；这些图表上的数值与 v7.12 有意不同）。
+这些测试检查数值/状态转换模型与 Pine 源码连接关系，不执行 Pine、不编译 TradingView 请求、不测量性能，也不能证明实时交易时段行为。仍需在 TradingView 完成以下验证：
+
+| 检查项 | TradingView 操作与预期 |
+|:--|:--|
+| 编译与请求预算 | 将 `vix.pine` 粘贴到 Pine Editor，在 `1m`、`30m`、`1D` 加载。分别开关 VVIX、周线 MTF，并使用互不相同的自定义 VIX/PCR/手动趋势源。检查嵌套展开后的请求数符合套餐限制；兼容目标为 40。 |
+| 已完成图表路径 | 在 SPY/QQQ/IWM 盘中图开启 `Confirmed Signals Only`，比较重载前后的 Score/Z/信号，并检查 tooltip 中的已完成结构日期。`1D` 信号仍等待收盘。 |
+| 发展中图表路径 | 关闭图表确认信号，对比 Safe Mode ON/OFF；发展中的 HTF 值可能变化，OFF 的历史预览可能使用未来数据。 |
+| 首根常规时段提醒 | 对比仅常规时段与包含盘前盘后的 `1m`/`30m` ETF 图表。确认型提醒可在首根符合条件的常规 K 线发送，无需再等一根图表 K 线，并继续按结构日去重。 |
+| 预览发送 | 测试两种频率、两种时段策略、重复 tick 和同一根 K 线中的反向事件。Once Per Bar 最多发送一条；被阻止的事件不会错误推进实际发送冷却，也不会排队补发。 |
+| 数据与结构门控 | 测试不可用的自定义源、历史不足、趋势缺失和两种卖出严格度。检查 Score 不可用/无信号、灰色未知趋势与对应 WAIT/HOLD 原因。被过滤的 BUY DIP 不得消耗展示冷却。 |
+| 统计 | 在符合条件的 `1D` 股票/基金/指数图检查已完成终点、有效正价格、入场日期窗口边界和零样本 `N/A`。不支持的日历/周期须隐藏统计；缺失手动参考不得把 SPX 混入收益区间。 |
+| 路由 | 检查 QQQ/QQQM、IWM、NQ/MNQ、RTY/M2K 与 `CNQ`，核对趋势/统计参考与文档中的精确规则一致。 |
+| 显示一致性 | 检查 Full/Mobile、分数因子/日期 tooltip、日线成交量及绘图。用上市时间较短的标的与加密货币图检查结构预热不依赖图表年龄；加密货币统计仍不可用。 |
+
+修改脚本代码或输入后，应删除并重建 TradingView 提醒，以刷新服务器快照。以上是验证清单，不代表已经通过 TradingView 编译或实盘提醒测试。
+
+## v7.14 更新内容
+
+- **确认语义明确**：盘中确认型图表信号、Score 与 Z 使用已完成日线快照；Safe Mode 明确区分历史未来数据保护与仍可能发生的 HTF 实时重绘。智能提醒时序仍单独选择。
+- **数据就绪与原因一致**：必需因子和已启用可选因子必须就绪；结构数据缺失时不产生信号。缺失趋势数据阻止需要趋势过滤的 BUY DIP，并显示未知状态。结构原因包含 Z 与趋势数据门控，被过滤的 BUY DIP 不再消耗展示冷却。
+- **日线因子可检查**：成交量与评分共用日线数据；现有分数单元格 tooltip 展示因子贡献与结构日期，不增加表格行数，也不把日期当作供应商更新时间。
+- **提醒发送修正**：包含盘前数据的图表可在首根常规时段发送确认型提醒。Once Per Bar 显式追踪共用发送配额，不再把被静默限频的调用记为已发送；保留事件丢弃语义。
+- **统计资格与计数**：统计要求符合条件的纽约时区股票/基金/指数 `1D` 图表、有效正价格端点、同一参考标的和已收盘终点。窗口按信号入场日期计算，空样本分级显示 `N/A`。
+- **精确代码识别与回归检查**：ETF/指数精确代码和期货根代码避免 `CNQ` 一类子串误匹配。标准库测试覆盖数值/状态行为和源码连接；TradingView 编译及实时验证仍是独立要求。默认值与输入选项字符串保持不变。
 
 ## v7.13 更新内容
 
@@ -354,10 +388,10 @@ QQQ: 🟢 BUY [PREVIEW] [Lv1] → 🟡DIP | Score:4.0 Z:-1.8 VIX:28(HIGH) 🟢SP
 
 ## 当前能力重点
 
-- 卖出严格度模式支持更干净、更高胜率的顶部筛选
-- 核心贪婪确认可以把卖出侧拦截为 `✋ HOLD (Core)`
-- 精确 `1D` 图表同时提供买入侧与卖出侧滚动统计
-- 卖出图表标签、提醒与统计统一基于最终过滤后的卖出信号
+- 卖出严格度模式支持更严格的顶部信号过滤
+- 核心贪婪确认可以把卖出侧拦截为 `HOLD Core/核心`
+- 符合条件的纽约时区股票/基金/指数 `1D` 图表同时提供买入侧与卖出侧滚动统计
+- 图表标签与统计使用最终图表事件；预览提醒消费这些事件，确认提醒则将共享过滤条件应用于独立的日线转换
 - confirmed 提醒现在会对完整结构日做一次快照，并在下一次常规时段只发一次
 - score 及其门控因子统一在 `SP:SPX` 日线上下文计算，盘中图表与 `1D` 图表的评分语义一致
 - confirmed 提醒消费的已完成结构日快照在实时与历史K线上完全一致
@@ -368,14 +402,16 @@ QQQ: 🟢 BUY [PREVIEW] [Lv1] → 🟡DIP | Score:4.0 Z:-1.8 VIX:28(HIGH) 🟢SP
 
 - Pine 只能在 TradingView 上做真实验证。
 - 外部日线数据可能晚于图表收盘更新。
+- Safe Mode 本身不会冻结发展中的日线值。盘中已完成图表信号需开启 `Confirmed Signals Only`；图表信号确认与智能提醒时序分别控制。
 - `VIX Timeframe = Chart` 并不代表整套模型都变成盘中实时：自 v7.13 起它只影响仪表盘 VIX 显示、实时波动区间门控、自适应趋势均线长度选择（即实时趋势过滤）与自适应提醒冷却——评分始终基于日线结构数据计算。
 - 评分在 `SP:SPX` 日线网格上计算。在非美股交易日历的 `1D` 图表上（加密货币、外汇），滚动窗口不再包含周末K线；在上市时间较短的标的上，预热数据来自 SPX 的数十年历史。这些图表读取的评分与 v7.12 不同（属于有意改进）。
 - confirmed 路径与 `Trading Safe Mode` 开关的解耦只在默认配置下成立：开启 `Use Weekly MTF Confirmation` 后，周线 MTF 腿在周线上下文内采样日线数据，开关仍会改变已完成周内被采样的具体交易日（开=每周最后一个日线值/周五，关=第一个/周一），confirmed 评分可能相差 ±1——请保持安全模式开启。该解耦同时假设 VIX / Put-Call / 手动趋势符号遵循美股交易日历；24 小时日历的自定义符号会让 confirmed 快照在开关间偏移一天。
 - 统计是滚动窗口统计，不是完整策略回测。
-- 胜率统计被有意限制为仅 `1D` 图表可见。
+- 胜率统计要求精确 `1D`、交易所时区 `America/New_York`、股票/基金/指数类型；这是保守的适用范围限制，不会自动对齐任意交易日历。
+- 自定义手动参考可能使用不同交易日期或收盘时间，尤其是 24 小时交易品种。图表符合统计资格不意味着参考日历会自动对齐；解读收益时应选择与图表日线时段兼容的参考标的。
 - `CBOE:VX1!` / `CBOE:VX2!` 是连续合约，移仓换月日会切换合约；期限结构读数（contango、basis、Z-Score）在移仓日附近可能出现人为尖峰。
-- `Regular Session Only` 对期货等 24 小时交易品种无效：这些品种的 `session.ismarket` 恒为 `true`，不会拦截任何提醒。请在有明确常规时段的股票 / ETF 图表上使用。
-- 指数自动识别基于图表代码的子串匹配（`QQQ` / `NDX` / `NQ`、`IWM` / `RUT` / `RTY`），包含这些子串的非常规代码可能被路由到错误的参考指数。
+- 时段门控使用图表交易所定义的常规时段。期货可能把延长的电子盘视为常规时段；此设置不会给所有品种强制套用美股现货时间。
+- 自动识别仅支持所列 ETF/指数代码与期货根代码。未列出的产品退回 SPX；需要时请选择手动参考。
 
 ## License
 

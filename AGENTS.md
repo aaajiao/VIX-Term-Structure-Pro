@@ -10,7 +10,7 @@
 | **Main File** | `vix.pine` (~1100 lines) |
 | **Purpose** | Multi-factor VIX term structure analysis with buy/sell signals |
 | **Language** | Pine Script (TradingView DSL) |
-| **Version** | v7.13 |
+| **Version** | v7.14 |
 
 ## Repository Layout
 
@@ -24,10 +24,12 @@
 
 ## Build / Lint / Test Commands
 
-**No local toolchain.** Pine Script compiles only on TradingView.
+**No local Pine compiler.** Pine Script compiles only on TradingView. Local Python checks exercise pure signal gates and numerical regression cases; they do not validate Pine compilation, nested requests, or realtime execution.
 
 ```bash
-# No build/lint/test commands - all validation on TradingView
+# Pure-function / reference regression checks (Python standard library)
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
+# Pine compilation and live verification remain in TradingView
 git add vix.pine && git commit -m "feat(v7.x): English / 中文"
 ```
 
@@ -37,12 +39,17 @@ git add vix.pine && git commit -m "feat(v7.x): English / 中文"
 2. **Visual**: Apply to chart → verify dashboard + signals render
 3. **Backtest**: Use TradingView's built-in strategy tester
 
-### Current v7.13 Reality Check
+### Current v7.14 Reality Check
 
 - `vix.pine` is currently ~1100 lines
-- Header is `indicator("VIX Term Structure Pro [v7.13]", ...)`
-- README and Chinese docs are already aligned to `v7.13`
-- No local compiler/test runner exists in this repo
+- Header is `indicator("VIX Term Structure Pro [v7.14]", ...)`
+- README and Chinese docs are aligned to `v7.14`
+- No local Pine compiler exists; `tests/` runs Python standard-library regression checks.
+- Structure readiness is carried in the existing live and completed-day tuples; missing required data blocks all signal tiers.
+- `f_signal_setup()` is shared by chart signals, dashboard states, and confirmed alerts.
+- `Confirmed Signals Only` ON uses completed-day data intraday, and chart-close confirmation on 1D+. Its OFF default preserves developing signals.
+- Score, explanatory volume, contango, and factor tooltip use the selected daily source.
+- Stats require exact 1D on New York stock/fund/index charts, closed positive-price endpoints, and one consistent reference instrument.
 
 ## Code Style Guidelines
 
@@ -97,8 +104,8 @@ calc_z_score_points(z_val, mid, strong) =>
 **CRITICAL**: Always use `ignore_invalid_symbol=true` and consistent lookahead:
 
 ```pine
-is_no_repaint_mode = trading_safe_mode or backtest_mode
-lookahead_setting = is_no_repaint_mode ? barmerge.lookahead_off : barmerge.lookahead_on
+// lookahead_off avoids historical future leakage, but developing HTF data can still repaint.
+lookahead_setting = trading_safe_mode ? barmerge.lookahead_off : barmerge.lookahead_on
 
 vix = request.security(sym_vix_input, vix_tf, close, 
     lookahead=lookahead_setting, ignore_invalid_symbol=true)
@@ -172,7 +179,8 @@ pct_high = enough_history ? pct_high_raw : na
 valid_data = not na(vix) and not na(vx1) and not na(vx2)
 
 // Division safety - check denominator
-contango_pct = valid_data and vx1 != 0 ? ((vx2 / vx1) - 1) * 100 : 0.0
+contango_pct = valid_data and vx1 > 0 ? ((vx2 / vx1) - 1) * 100 : na
+// Carry readiness into the existing daily tuples and suppress signals while unavailable.
 
 // Optional feature guard
 calc_vvix_points(vvix_val, use_vvix) =>
@@ -218,7 +226,8 @@ if barstate.isnew
 ### Trading Safe Mode (v7.9)
 
 ```pine
-// Signal calculation: always use lookahead_off for no-repaint
+// Developing signal source: lookahead_off avoids future leaks, not realtime HTF changes.
+// Completed intraday chart signals use the existing offset daily tuple instead.
 vix = request.security(sym, tf, close, lookahead=lookahead_setting, ignore_invalid_symbol=true)
 
 // Dashboard display only: real-time on last bar
@@ -277,9 +286,18 @@ If signal filtering uses auto-detected index context, return statistics should u
 - IWM / RUT / RTY charts → `TVC:RUT`
 - Everything else → `SP:SPX`
 
+## v7.14 Regression Rules
+
+- Do not replace missing structure inputs with zero or missing trends with bullish state.
+- Only final displayed DIP/HEDGE events update their display cooldown. Alert observation/discard bookkeeping is intentionally separate.
+- Stats count confirmed exits with positive valid endpoints; manual reference NA never falls back to another instrument. Rolling windows select by signal date.
+- Use exact ticker families and futures roots for index detection, not arbitrary substring matching.
+- Add no scalar requests for fields that can be returned in existing tuples. Recheck nested contexts and the 127 tuple-element limit in TradingView.
+- `time`/`time_close` identify source bars, not provider publication timestamps.
+
 ## Hard Constraints
 
-1. **No Repainting** - Default `lookahead_off` for live trading safety
+1. **Confirmation Integrity** - Default `lookahead_off` avoids future leaks. Do not describe developing HTF signals as non-repainting; completed intraday signals use the existing offset daily tuple.
 2. **No Breaking Changes** - Maintain backward compat for existing users
 3. **Bilingual Always** - EN/CN for all user-visible strings
 4. **Manual Git** - Never auto-commit; user reviews all changes

@@ -1,4 +1,4 @@
-# VIX Term Structure Pro v7.13
+# VIX Term Structure Pro v7.14
 
 [![TradingView](https://img.shields.io/badge/TradingView-Indicator-blue?logo=tradingview)](https://www.tradingview.com/scripts/)
 [![Pine Script](https://img.shields.io/badge/Pine%20Script-v6-brightgreen)](https://www.tradingview.com/pine-script-reference/v6/)
@@ -20,7 +20,7 @@ Current script:
 
 - Main file: `vix.pine`
 - Pine version: `//@version=6`
-- Indicator title: `VIX Term Structure Pro [v7.13]`
+- Indicator title: `VIX Term Structure Pro [v7.14]`
 - Historical execution window: `calc_bars_count=5000`
 - Primary use case: SPY / QQQ / IWM / index charts on TradingView
 
@@ -33,6 +33,7 @@ Current script:
 | `docs/README_CN.md` | Chinese documentation |
 | `chart_guide.png` | Dashboard / chart reference image |
 | `zscore_guide.png` | Z-Score interpretation image |
+| `tests/` | Python regression models and Pine source-wiring checks; not a Pine compiler |
 
 ## How the Indicator Works
 
@@ -51,6 +52,8 @@ The score combines objective VIX structure factors:
 - Optional weekly MTF alignment
 
 When adaptive thresholds are enabled, PCR percentile thresholds now feed the score directly. When VVIX integration is enabled, the selected `VVIX Threshold Mode` also feeds the score directly.
+
+Every required structure input and enabled factor must have valid data and sufficient history. Until that gate is satisfied, `Score` is unavailable (`N/A`) and no signal is produced; missing values are not treated as neutral factor contributions. Disabled optional VVIX or MTF does not block readiness. Smart volume values and their contribution come from the same daily payload as `Score`.
 
 Trend is not part of the score. Trend only affects:
 
@@ -73,9 +76,11 @@ The indicator uses fixed symbols for cross-chart consistency:
 
 Auto-detect routing:
 
-- QQQ / NDX / NQ-family charts use `NASDAQ:NDX`
-- IWM / RUT / RTY-family charts use `TVC:RUT`
+- Exact tickers `QQQ`, `QQQM`, `TQQQ`, `SQQQ`, `QLD`, `QID`, `NDX`, and futures with root `NQ` or `MNQ` use `NASDAQ:NDX`
+- Exact tickers `IWM`, `UWM`, `TWM`, `TNA`, `TZA`, `RUT`, and futures with root `RTY` or `M2K` use `TVC:RUT`
 - Everything else uses `SP:SPX`
+
+Matching uses exact ETF/index names and futures roots, not arbitrary substrings: `CNQ`, for example, stays with `SP:SPX`.
 
 ## Signal Model
 
@@ -84,7 +89,7 @@ Auto-detect routing:
 | Signal | Score Zone | Meaning |
 |:--|:--|:--|
 | `🚨 CRASH BUY` | `>= 6` | Extreme panic |
-| `🟢 STRONG BUY` | `>= 5` | High-conviction buy setup |
+| `🟢 STRONG BUY` | `>= 5` and `< 6` | Strong buy setup |
 | `🟡 BUY DIP` | `>= min_score_buy` and `< 5` | Weaker buy setup |
 | `⏸ NEUTRAL` | Between buy/sell zones | No directional edge |
 | `🟠 SELL/HEDGE` | `<= -2` and `> -5` | Hedge / trim risk |
@@ -97,13 +102,20 @@ These are display states, not separate score formulas:
 
 | State | Why It Appears |
 |:--|:--|
-| `✋ WAIT (Vol)` | Buy score is high enough, but volatility regime is too risky |
-| `✋ WAIT (Mom)` | Buy score is high enough, but momentum confirmation failed |
-| `✋ WAIT (Core)` | Buy score is high enough, but no core panic confirmation is present |
-| `☕ HOLD (Vol)` | Sell score is low enough, but volatility regime does not justify selling |
-| `✋ HOLD (Mom)` | Sell score is low enough, but momentum confirmation failed |
-| `✋ HOLD (Core)` | Sell score is low enough, but no core euphoria confirmation is present |
+| `DATA N/A / 数据不足` | Required structure data or factor warmup is incomplete; all signals are blocked |
+| `WAIT Vol/波动` | Buy score is high enough, but volatility regime is too risky |
+| `WAIT Mom/动量` | Buy score is high enough, but momentum confirmation failed |
+| `WAIT Z/结构` | BUY DIP score is high enough, but Z has not passed its panic threshold |
+| `WAIT Core/核心` | Buy score is high enough, but no core panic confirmation is present |
+| `WAIT Trend / 趋势缺失` | BUY DIP requires trend filtering, but the selected trend reference is unavailable |
+| `HOLD Vol/波动` | Sell score is low enough, but volatility regime does not justify selling |
+| `HOLD Mom/动量` | Sell score is low enough, but momentum confirmation failed |
+| `HOLD Core/核心` | Sell score is low enough, but no core euphoria confirmation is present |
 | `🚫 NO TRADE` | Buy-side setup is filtered by bear trend when trend filter is enabled |
+
+Dashboard setup reasons and signal eligibility share the same gates. Missing trend data appears grey/unknown rather than bullish. BUY DIP display cooldown is consumed only by a final eligible signal, so a filtered setup does not suppress the next valid crossing.
+
+A dashboard setup label describes the current eligible score zone. A new chart marker additionally requires a fresh threshold crossing and any applicable display cooldown; the score tooltip explains this distinction.
 
 ### Sell Strictness
 
@@ -111,6 +123,8 @@ Sell-side behavior now has two explicit modes:
 
 - `Balanced (Legacy)`: preserves the previous sell / hedge filtering
 - `High Win-Rate`: requires core euphoria confirmation for `🔴 STRONG SELL` and `🟠 SELL/HEDGE`
+
+`High Win-Rate` is the preserved option name, not an empirical promise of higher returns or win rate.
 
 Core euphoria confirmation is satisfied when at least one of these is true:
 
@@ -122,25 +136,29 @@ Core euphoria confirmation is satisfied when at least one of these is true:
 
 ### Confirmation Layers
 
-There are two separate ideas in the script:
+There are three timing controls:
 
-- `Confirmed Signals Only`: controls whether displayed chart signals wait for bar close
-- `Alert Timing Mode`: controls whether smart alerts are preview-style or confirmation-style
+- `Trading Safe Mode = ON` prevents historical future leakage. It still reads developing higher-timeframe values in the live path, so those values can change and repaint after reload. OFF permits historical preview values that were not yet available at that time.
+- `Confirmed Signals Only = ON`: on intraday charts, displayed `Score`, Z and chart signals use the previous completed daily structure snapshot. On `1D` and higher charts, signals wait for chart-bar close. OFF retains the developing daily chart path.
+- `Alert Timing Mode` separately chooses the smart-alert data and timing: preview or completed daily structure.
 
-They are intentionally treated as separate controls.
+Defaults and input option strings are preserved in v7.14: Safe Mode is ON, `Confirmed Signals Only` is OFF, and alert timing is `Confirmed Daily Structure`. Keep Safe Mode ON when using weekly MTF; the nested-request calendar caveats below still apply.
 
 ### Statistics Model
 
-Rolling statistics are intentionally limited to exact `1D` charts.
+Rolling statistics require an exact `1D` chart whose exchange timezone is `America/New_York` and whose symbol type is stock, fund or index. Futures, crypto, forex, other timeframes and other exchange timezones do not show win-rate statistics.
 
-- non-`1D` charts display `1D ONLY` instead of win-rate numbers
+- unsupported charts display a timeframe/calendar notice instead of win-rate numbers
 - only confirmed final buy and sell signals are counted
-- only evaluated samples are counted in `N`
+- `N` counts only samples whose holding-period exit bar has closed and whose entry/exit reference prices are valid and strictly positive
+- the selected reference identity remains fixed across both endpoints; an unavailable manual reference does not fall back to SPX
+- the window is based on signal entry dates over the last `lookback years * 252` chart trading days; each holding period uses an evaluation window of `lookback bars - hold bars`
+- tiers with zero evaluated samples display `N/A`, not a misleading `0%` win rate
 - buy-side wins use `Ref > 0`
 - sell-side wins use `Ref <= 0`
 - sell-side average return stays raw; more negative is better for top / hedge calls
 - `Wxx%` is the fixed-horizon win rate for completed samples
-- stats lookback is capped at `19` years because `19*252 + 60 = 4848`, which stays inside the `5000`-bar execution / buffer budget
+- stats lookback remains capped at `19` years within the `5000`-bar execution / buffer budget; readiness counts actually executed, closed bars
 
 ## Smart Alerts
 
@@ -155,7 +173,8 @@ Default settings:
 
 This default means:
 
-- confirmed alerts are based on the previous completed structure day and emit once on the next regular-session opportunity
+- on intraday charts, confirmed alerts use the previous completed structure day and can emit on the first regular-session bar, including when the chart has premarket bars
+- on `1D` and higher charts, confirmed alerts retain same-bar-close timing
 - preview alerts try to fire as early as possible
 - the alert message tells you which mode produced the alert
 
@@ -163,7 +182,7 @@ This default means:
 
 | Mode | Meaning |
 |:--|:--|
-| `Confirmed Daily Structure` | Snapshot one completed structure day and emit once on the next regular-session opportunity |
+| `Confirmed Daily Structure` | Intraday: previous completed structure day, once at the first eligible regular-session bar; `1D` and higher: chart-bar close |
 | `Preview / Earliest Possible` | Preserve earliest-possible behavior for intraday previews |
 
 If `VIX Timeframe = Chart` in preview mode:
@@ -205,7 +224,7 @@ TradingView alerts run from a server-side snapshot of the script and its inputs.
 Symbol: [Side] [Timing] [Level][Upgrade] → [Triggered Labels] | [Context] [Trend] | [Mode]
 
 SPY: 🟢 BUY [CONFIRMED] [Lv2] → 🟢STRONG | Score:5.2 Z:-2.1 VIX:19(NORM) 🟢SPX 🟢NDX 🔴RUT | Confirmed
-QQQ: 🟢 BUY [PREVIEW] [Lv1] → 🟡DIP | Score:4.0 Z:-1.8 VIX:28(HIGH) 🟢SPX 🟢NDX 🔴RUT | Hybrid preview hybrid daily+chart
+QQQ: 🟢 BUY [PREVIEW] [Lv1] → 🟡DIP | Score:4.0 Z:-1.8 VIX:20(NORM) 🟢SPX 🟢NDX 🔴RUT | Hybrid preview hybrid daily+chart
 ```
 
 Alert state machine behavior:
@@ -216,6 +235,7 @@ Alert state machine behavior:
 - preview-mode side latch: same-side same-level alerts emit at most once per chart day, only strict level upgrades can re-emit
 - preview-mode extended-session edges also consume that same-day latch, preventing after-hours `1m` replay spam
 - rollback-safe `varip` state keeps side-latch/cooldown/send bookkeeping stable across realtime-bar updates
+- `Once Per Bar` uses one explicit shared dispatch quota for both sides; a blocked second call is observed but does not falsely advance actual-send cooldown bookkeeping
 - confirmed-mode snapshot and single emit per structure day
 - adaptive cooldown measured in chart bars for preview mode
 - signals blocked by cooldown or session policy are discarded, never deferred or re-sent
@@ -237,11 +257,13 @@ Sixteen rows:
 
 | Section | Content |
 |:--|:--|
-| Header | Indicator title + safe/preview mode |
+| Header | Indicator title + `CLOSED D / 已完成`, `LIVE D / 发展中`, or `⚠️PREVIEW / 预览` |
 | Signal | Current signal + score bar |
 | Market | SPX / NDX / RUT trend, VIX regime, alert mode, volume |
 | Structure | Term structure Z + contango |
-| Stats | `1D`-only evaluated sample counts, win rate, and average returns for both buy and sell tiers |
+| Stats | Evaluated sample counts, win rate and average returns for both sides on eligible `1D` charts |
+
+The score cell tooltip shows factor contributions, selected source and the structure date behind the displayed score. The date identifies the calculation period, not a provider update timestamp. Full remains sixteen rows. Mobile remains two rows with its existing alert-mode row; its score tooltip identifies the selected score source.
 
 ### Visual Elements
 
@@ -273,14 +295,14 @@ The script can display:
 
 ### Signal Confirmation
 
-- chart-signal bar-close confirmation
+- completed-day intraday chart signals, or chart-close confirmation on `1D` and higher
 - momentum confirmation
 - weekly MTF confirmation
 - signal display cooldown
 
 ### Statistics and Alerts
 
-- rolling stats lookback (`1-19Y`, `1D` stats only)
+- rolling stats lookback (`1-19Y`, eligible New York stock/fund/index `1D` charts only)
 - return periods reused by matching buy / sell tiers
 - smart alert timing mode
 - after-hours policy
@@ -308,7 +330,7 @@ Recommended for most users:
 - use an exact `1D` chart if you want win-rate stats
 - `Trading Safe Mode = ON`
 - `Alert Timing Mode = Confirmed Daily Structure`
-- `Sell Signal Strictness = High Win-Rate` if you want fewer, cleaner top signals
+- `Sell Signal Strictness = High Win-Rate` to require core euphoria confirmation on the two lower sell tiers
 - `Use Momentum Confirmation = ON`
 - `Use Weekly MTF Confirmation = OFF` or ON only if you want stricter filtering
 
@@ -319,30 +341,42 @@ Recommended only if you understand hybrid timing:
 - chart: `SPY` / `QQQ`
 - timeframe: `15m` or `1h`
 - `VIX Timeframe = Chart`
+- `Confirmed Signals Only = OFF` for developing chart previews; ON selects completed-day chart signals while smart alert timing remains separately selectable
 - `Alert Timing Mode = Preview / Earliest Possible`
 - add `Regular Session Only` if you want no post-close alerts, including extended-hours `1m` bars
 
 ## Validation Workflow
 
-There is no local Pine compiler in this repository.
+There is no local Pine compiler in this repository. Run the standard-library regression suite from the repository root:
 
-Validation must be done in TradingView:
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
+```
 
-1. Paste `vix.pine` into the Pine Editor.
-2. Confirm the script compiles with no syntax errors.
-3. Apply it to `SPY`, `QQQ`, and `IWM`.
-4. Check dashboard layout in both `Full` and `Mobile`.
-5. Verify signal labels, trend filter behavior, buy/sell `1D` stats output, and stats reference alignment.
-6. Test smart alerts with:
-   - `Confirmed Daily Structure`
-   - `Preview / Earliest Possible`
-   - `Regular Session Only`
-   - recreate the TradingView alert after each input change that affects timing/session behavior
-7. Switch `Sell Signal Strictness` between `Balanced (Legacy)` and `High Win-Rate` and confirm `✋ HOLD (Core)` appears when expected.
-8. On an intraday ETF chart, verify `Confirmed Daily Structure` emits at most once for the same completed structure day and does not repeat across after-hours `1m` bars.
-9. In preview mode, verify `Regular Session Only` still blocks after-hours alerts on extended-hours `1m` bars.
-10. In preview mode with `Allow if source confirms` on extended-hours `1m`, verify same-side same-level alerts do not repeat within one chart day; only `Lv1 -> Lv2 -> Lv3` upgrades can emit again.
-11. On a crypto `1D` chart and a recently listed ticker's `1D` chart, verify score/Z render sensibly (v7.13 sources them from the SPX daily grid; values intentionally differ from v7.12 there).
+These tests check numerical/state-transition models and Pine source wiring. They do not execute Pine, compile TradingView requests, measure performance, or prove live session behavior. TradingView validation remains required:
+
+| Check | TradingView procedure and expected result |
+|:--|:--|
+| Compile and request budget | Paste `vix.pine` into Pine Editor; load on `1m`, `30m` and `1D`. Repeat with VVIX on/off, weekly MTF on/off and distinct custom VIX/PCR/manual trend sources. Check nested expanded request usage stays within the applicable plan limit; the compatibility target is 40. |
+| Completed chart path | On SPY/QQQ/IWM intraday charts, turn `Confirmed Signals Only` ON and compare Score/Z/signals before and after reload. Check the tooltip's completed structure date. On `1D`, signals still wait for close. |
+| Developing chart path | Turn confirmed chart signals OFF and compare Safe Mode ON/OFF; developing HTF values may change, and OFF historical previews may use future values. |
+| First regular-session alert | Compare regular-only and extended-hours `1m`/`30m` ETF charts. Confirmed alerts may emit on the first eligible regular bar without waiting an extra chart bar, then remain deduplicated for that structure day. |
+| Preview dispatch | Exercise both frequency options, both session policies, repeated ticks and opposite-side events in one bar. Verify Once Per Bar sends at most one message and blocked events do not create false actual-send cooldowns or deferred messages. |
+| Data and setup gates | Test unavailable custom sources, insufficient history, missing trend data and both sell strictness modes. Verify Score unavailable/no signals, grey unknown trends, and the appropriate WAIT/HOLD reason. A filtered BUY DIP must not consume display cooldown. |
+| Statistics | On eligible `1D` stock/fund/index charts check completed exits, positive valid endpoints, entry-date window boundaries and zero-sample `N/A`. Confirm unsupported calendars/timeframes hide statistics and a missing manual reference never mixes SPX into a return. |
+| Routing | Check QQQ/QQQM, IWM, NQ/MNQ, RTY/M2K and `CNQ`; compare the trend/statistics reference against the documented exact routing. |
+| Visual consistency | Check Full/Mobile, score factor/date tooltips, daily volume and plots. Use a recently listed symbol and a crypto chart to inspect structure warmup independently of chart age; crypto statistics remain unavailable. |
+
+Delete and recreate TradingView alerts after changing script code or inputs so the server-side snapshot is refreshed. The procedures above are a validation checklist, not a claim that TradingView compilation or live alert tests have passed.
+
+## What's New in v7.14
+
+- **Explicit confirmation semantics**: intraday confirmed chart signals, Score and Z use completed daily snapshots; Safe Mode now clearly describes historical future-leak protection and the remaining developing-HTF repaint behavior. Smart-alert timing stays separately selected.
+- **Data readiness and consistent reasons**: required factors and enabled optional factors must be ready; unavailable structure data produces no signal. Missing trend data blocks filtered BUY DIP and shows unknown status. Setup reasons include Z and trend-data gates, and filtered BUY DIP no longer consumes display cooldown.
+- **Daily factor inspection**: volume and score share their daily payload, while existing score-cell tooltips expose factor contributions and structure dates without adding rows or claiming a provider update time.
+- **Alert dispatch correction**: confirmed alerts can emit on the first regular-session bar of an extended-hours chart. Once Per Bar explicitly tracks its shared send quota instead of recording silently throttled calls as sent; discarded-event semantics are preserved.
+- **Statistics eligibility and accounting**: statistics require eligible New York stock/fund/index `1D` charts, valid positive endpoints, one reference identity and closed exits. Windows use signal entry dates; empty tiers display `N/A`.
+- **Exact symbol routing and regression checks**: explicit ETF/index names and futures roots prevent substring false matches such as `CNQ`. Standard-library tests cover numerical/state behavior and source wiring; TradingView compilation and realtime verification remain separate requirements. Defaults and input option strings are preserved.
 
 ## What's New in v7.13
 
@@ -354,10 +388,10 @@ Validation must be done in TradingView:
 
 ## Current Highlights
 
-- sell-side strictness mode supports cleaner high-win-rate top signals
-- core euphoria confirmation can gate sell signals with `✋ HOLD (Core)`
-- exact `1D` charts include rolling buy-side and sell-side statistics
-- sell plots, alerts, and stats all use the final filtered sell signals
+- sell-side strictness mode supports stricter top-signal filtering
+- core euphoria confirmation can gate sell signals with `HOLD Core/核心`
+- eligible New York stock/fund/index `1D` charts include rolling buy-side and sell-side statistics
+- chart plots and stats use final chart events; Preview alerts consume those events, while Confirmed alerts apply the shared setup gates to independent daily transitions
 - confirmed alerts now snapshot one structure day and emit once during the next regular session
 - the score and its gates are evaluated in the `SP:SPX` daily context, so intraday charts match `1D` score semantics
 - confirmed alerts consume a completed-structure-day snapshot that is identical on live and historical bars
@@ -368,14 +402,16 @@ Validation must be done in TradingView:
 
 - Pine can only be truly validated on TradingView.
 - External daily sources may update later than the chart close.
+- Safe Mode alone does not freeze developing daily values. Completed intraday chart signals require `Confirmed Signals Only = ON`; chart-signal confirmation and smart-alert timing are separate.
 - `VIX Timeframe = Chart` does not make the whole model intraday; since v7.13 it only affects the dashboard VIX display, the live VIX regime gates, the adaptive trend-MA length selection (and thus the live trend filter), and the adaptive alert cooldown — the score itself is always computed on daily structure data.
 - The score is evaluated on the `SP:SPX` daily grid. On `1D` charts off the US trading calendar (crypto, forex) the rolling windows no longer include weekend bars, and on recently listed tickers the warmup comes from decades of SPX history, so those charts read different (intentionally improved) score values than v7.12.
 - Confirmed-path independence from `Trading Safe Mode` holds for the default configuration. With `Use Weekly MTF Confirmation` enabled, the weekly MTF leg samples its daily inputs inside a weekly context, so the toggle still changes which day of the completed week is sampled (ON = last daily bar / Friday, OFF = first / Monday) and can shift the confirmed score by ±1 — keep Safe Mode ON. It also assumes the VIX / Put-Call / manual-trend symbols follow the US equity trading calendar; 24-hour-calendar custom symbols shift the confirmed snapshot by one day between toggle states.
 - Statistics are rolling and reference-index based, not a full broker-grade backtest.
-- Win-rate statistics are intentionally `1D`-only.
+- Win-rate statistics require exact `1D`, exchange timezone `America/New_York`, and stock/fund/index type; this is a conservative eligibility rule, not automatic reconciliation of arbitrary trading calendars.
+- A custom manual reference can have different trading dates or close times, particularly for 24-hour instruments. Chart eligibility does not align that reference's calendar automatically; choose a reference compatible with the chart's daily session when interpreting its returns.
 - `CBOE:VX1!` / `CBOE:VX2!` are continuous futures that switch contracts on roll dates; term structure readings (contango, basis, Z-Score) can spike artificially around the roll.
-- `Regular Session Only` is ineffective on futures and other 24-hour symbols: `session.ismarket` is always `true` there, so nothing is blocked. Use it on equity / ETF charts with a defined regular session.
-- Index auto-detect matches substrings of the chart ticker (`QQQ` / `NDX` / `NQ`, `IWM` / `RUT` / `RTY`), so unusual tickers containing those substrings can be routed to the wrong reference index.
+- Session gating uses the chart exchange's regular-session definition. Futures may treat their extended electronic session as regular; this setting does not impose US equity hours on every symbol.
+- Auto-detect recognizes only the listed ETF/index names and futures roots. Unlisted products fall back to SPX; choose a manual reference when needed.
 
 ## License
 
