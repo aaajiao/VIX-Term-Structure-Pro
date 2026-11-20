@@ -10,7 +10,7 @@
 | **Main File** | `vix.pine` (~1100 lines) |
 | **Purpose** | Multi-factor VIX term structure analysis with buy/sell signals |
 | **Language** | Pine Script (TradingView DSL) |
-| **Version** | v7.14 |
+| **Version** | v7.15 |
 
 ## Repository Layout
 
@@ -39,11 +39,12 @@ git add vix.pine && git commit -m "feat(v7.x): English / 中文"
 2. **Visual**: Apply to chart → verify dashboard + signals render
 3. **Backtest**: Use TradingView's built-in strategy tester
 
-### Current v7.14 Reality Check
+### Current v7.15 Reality Check
 
 - `vix.pine` is currently ~1100 lines
-- Header is `indicator("VIX Term Structure Pro [v7.14]", ...)`
-- README and Chinese docs are aligned to `v7.14`
+- Header is `indicator("VIX Term Structure Pro [v7.15]", ...)`
+- README and Chinese docs are aligned to `v7.15`
+- Symbol inputs are `input.string`, never `input.symbol`: the TradingView MCP server returns `symbol_not_auth` for any script that requests an `input.symbol` value, while the same symbols as plain strings load normally. Keep defaults as full `EXCHANGE:TICKER` strings.
 - No local Pine compiler exists; `tests/` runs Python standard-library regression checks.
 - Structure readiness is carried in the existing live and completed-day tuples; missing required data blocks all signal tiers.
 - `f_signal_setup()` is shared by chart signals, dashboard states, and confirmed alerts.

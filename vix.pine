@@ -1,9 +1,9 @@
 //@version=6
 // calc_bars_count uses a fixed 5000-bar execution window to stay within Pine's common historical buffer.
-indicator("VIX Term Structure Pro [v7.14]", overlay=false, calc_bars_count=5000)
+indicator("VIX Term Structure Pro [v7.15]", overlay=false, calc_bars_count=5000)
 
 // ╔════════════════════════════════════════════════════════════════════════════╗
-// ║                    VIX Term Structure Pro v7.14 使用指南                     ║
+// ║                    VIX Term Structure Pro v7.15 使用指南                     ║
 // ╠════════════════════════════════════════════════════════════════════════════╣
 // ║ 📊 仪表盘指标解读                                                           ║
 // ║----------------------------------------------------------------------------║
@@ -118,10 +118,12 @@ calc_kama(src, length, fastLen, slowLen) =>
 grp_data = "📡 Data Sources"
 trading_safe_mode = input.bool(true, "🛡️ Trading Safe Mode (Recommended)", group=grp_data, tooltip="ON: No future daily values on historical bars 历史K线不提前读取当日最终值\nDeveloping daily values can still change/repaint 实时日线值仍可能变化或重绘\nEnable Confirmed Signals Only for completed-day intraday signals 开启确认信号可在盘中使用已完成日线\nOFF: Historical preview can leak future values 历史预览可能包含未来数据")
 
-sym_vix_input = input.symbol("CBOE:VIX", "VIX Symbol", group=grp_data, tooltip="VIX数据源 VIX data source\n默认 Default: CBOE:VIX")
+// v7.15: 数据源品种改用 input.string：TradingView MCP 服务端遇到 input.symbol 会报 symbol_not_auth。默认值与输入顺序不变，手动填写 EXCHANGE:TICKER
+// v7.15: data-source symbols use input.string because the TradingView MCP server fails with symbol_not_auth on input.symbol. Defaults and input order are unchanged; enter EXCHANGE:TICKER by hand
+sym_vix_input = input.string("CBOE:VIX", "VIX Symbol", group=grp_data, tooltip="VIX数据源 VIX data source\n默认 Default: CBOE:VIX")
 vix_timeframe = input.string("Daily", "VIX Timeframe", options=["Daily", "Chart"], group=grp_data, tooltip="Daily: 日线结构源 daily structure source (稳定 stable)\nChart: VIX显示/波动区间门控/自适应趋势均线选择(实时趋势过滤)/自适应冷却跟随图表周期 VIX display, regime gating, adaptive trend-MA selection (live trend filter) and adaptive cooldown follow the chart timeframe\nv7.13起评分始终基于日线结构计算 Since v7.13 Score is always computed on daily structure data")
-sym_pcr_input = input.symbol("INDEX:CPCI", "Put/Call Ratio Symbol", group=grp_data, tooltip="看跌/看涨比率 Put/Call Ratio\n默认 Default: INDEX:CPCI (指数期权 Index options)")
-manual_trend_src = input.symbol("SP:SPX", "Manual Trend Source", group=grp_data, tooltip="手动趋势源 Manual trend source\n仅当自动检测关闭时使用 Only used when Auto-Detect is OFF")
+sym_pcr_input = input.string("INDEX:CPCI", "Put/Call Ratio Symbol", group=grp_data, tooltip="看跌/看涨比率 Put/Call Ratio\n默认 Default: INDEX:CPCI (指数期权 Index options)")
+manual_trend_src = input.string("SP:SPX", "Manual Trend Source", group=grp_data, tooltip="手动趋势源 Manual trend source\n仅当自动检测关闭时使用 Only used when Auto-Detect is OFF")
 
 // ────────────────────────────────────────────────────────────────────────────
 // ⚠️ 策略模式 (Strategy Mode) - 核心设置

@@ -1,4 +1,4 @@
-# VIX Term Structure Pro v7.14
+# VIX Term Structure Pro v7.15
 
 [![TradingView](https://img.shields.io/badge/TradingView-Indicator-blue?logo=tradingview)](https://www.tradingview.com/scripts/)
 [![Pine Script](https://img.shields.io/badge/Pine%20Script-v6-brightgreen)](https://www.tradingview.com/pine-script-reference/v6/)
@@ -20,7 +20,7 @@ VIX Term Structure Pro 是一个基于 TradingView Pine Script v6 的波动率�
 
 - 主文件：`vix.pine`
 - Pine 版本：`//@version=6`
-- 指标标题：`VIX Term Structure Pro [v7.14]`
+- 指标标题：`VIX Term Structure Pro [v7.15]`
 - 历史执行窗口：`calc_bars_count=5000`
 - 主要使用场景：TradingView 上的 `SPY`、`QQQ`、`IWM` 及相关指数图表
 
@@ -285,6 +285,8 @@ QQQ: 🟢 BUY [PREVIEW] [Lv1] → 🟡DIP | Score:4.0 Z:-1.8 VIX:20(NORM) 🟢SP
 - `Put/Call Ratio Symbol`
 - `Manual Trend Source`
 
+自 v7.15 起，`VIX Symbol`、`Put/Call Ratio Symbol` 和 `Manual Trend Source` 是文本输入，需要手动填写完整的 `EXCHANGE:TICKER`，例如 `CBOE:VIX`。
+
 ### Strategy Mode
 
 - 信号灵敏度：`High`、`Normal`、`Low`
@@ -368,6 +370,10 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
 | 显示一致性 | 检查 Full/Mobile、分数因子/日期 tooltip、日线成交量及绘图。用上市时间较短的标的与加密货币图检查结构预热不依赖图表年龄；加密货币统计仍不可用。 |
 
 修改脚本代码或输入后，应删除并重建 TradingView 提醒，以刷新服务器快照。以上是验证清单，不代表已经通过 TradingView 编译或实盘提醒测试。
+
+## v7.15 更新内容
+
+- **TradingView MCP 兼容**：`VIX Symbol`、`Put/Call Ratio Symbol` 和 `Manual Trend Source` 由 `input.symbol` 改为 `input.string`。脚本只要请求 `input.symbol` 的值，TradingView MCP 服务端就会报 `symbol_not_auth` 并停止计算；同样的品种写成普通字符串则能正常取数。默认值、输入顺序和计算逻辑都不变，设置面板里不再有品种选择器。
 
 ## v7.14 更新内容
 

@@ -1,4 +1,4 @@
-# VIX Term Structure Pro v7.14
+# VIX Term Structure Pro v7.15
 
 [![TradingView](https://img.shields.io/badge/TradingView-Indicator-blue?logo=tradingview)](https://www.tradingview.com/scripts/)
 [![Pine Script](https://img.shields.io/badge/Pine%20Script-v6-brightgreen)](https://www.tradingview.com/pine-script-reference/v6/)
@@ -20,7 +20,7 @@ Current script:
 
 - Main file: `vix.pine`
 - Pine version: `//@version=6`
-- Indicator title: `VIX Term Structure Pro [v7.14]`
+- Indicator title: `VIX Term Structure Pro [v7.15]`
 - Historical execution window: `calc_bars_count=5000`
 - Primary use case: SPY / QQQ / IWM / index charts on TradingView
 
@@ -285,6 +285,8 @@ The script can display:
 - `Put/Call Ratio Symbol`
 - `Manual Trend Source`
 
+`VIX Symbol`, `Put/Call Ratio Symbol` and `Manual Trend Source` are text inputs since v7.15: type a full `EXCHANGE:TICKER` such as `CBOE:VIX`.
+
 ### Strategy Mode
 
 - signal sensitivity: `High`, `Normal`, `Low`
@@ -368,6 +370,10 @@ These tests check numerical/state-transition models and Pine source wiring. They
 | Visual consistency | Check Full/Mobile, score factor/date tooltips, daily volume and plots. Use a recently listed symbol and a crypto chart to inspect structure warmup independently of chart age; crypto statistics remain unavailable. |
 
 Delete and recreate TradingView alerts after changing script code or inputs so the server-side snapshot is refreshed. The procedures above are a validation checklist, not a claim that TradingView compilation or live alert tests have passed.
+
+## What's New in v7.15
+
+- **TradingView MCP compatibility**: `VIX Symbol`, `Put/Call Ratio Symbol` and `Manual Trend Source` now use `input.string` instead of `input.symbol`. When this script requested any `input.symbol` value, the TradingView MCP server stopped with `symbol_not_auth`, even though the same symbols loaded normally as plain strings. Defaults, input order and calculations are unchanged; the settings panel no longer shows a symbol picker.
 
 ## What's New in v7.14
 
